@@ -1,0 +1,61 @@
+* StrongArm Dynamic Comparator — DUT Subcircuit
+* Technology: parameterized (L={L}, model via testbench .include)
+*
+* Ports (in order):
+*   INP  — differential input (+)
+*   INN  — differential input (−)
+*   CLK  — clock
+*   VDD  — positive supply
+*   OUTP — digital output (+), HIGH when INP > INN
+*   OUTN — digital output (−), HIGH when INN > INP
+*
+* Internal nodes (not ports):
+*   VS   — tail source node
+*   VXP  — integration node (+), discharges faster when INP is higher
+*   VXN  — integration node (−)
+*   VLP  — latch node (+)
+*   VLN  — latch node (−)
+
+.subckt comparator_strongarm INP INN CLK VDD OUTP OUTN
+
+* ── Reset PMOS (M7–M10) ──────────────────────────────────────────────────────
+* Gate = CLK.  ON when CLK=0 (reset phase): pull VXP/VXN/VLP/VLN to VDD.
+* OFF when CLK=1 (evaluation phase).
+M7  VXP CLK VDD VDD pmos W={W_rst}u L={L}
+M8  VXN CLK VDD VDD pmos W={W_rst}u L={L}
+M9  VLP CLK VDD VDD pmos W={W_rst}u L={L}
+M10 VLN CLK VDD VDD pmos W={W_rst}u L={L}
+
+* ── Tail NMOS (M0) ───────────────────────────────────────────────────────────
+* Gate = CLK.  ON when CLK=1: provides evaluation current path to GND.
+M0 VS CLK 0 0 nmos W={W_tail}u L={L}
+
+* ── Input differential pair (M1, M2) ─────────────────────────────────────────
+* Drain = VXP/VXN (integration nodes).  Source = VS (tail).
+* INP > INN → M1 draws more current → VXP discharges faster than VXN.
+M1 VXP INP VS 0 nmos W={W_in}u L={L}
+M2 VXN INN VS 0 nmos W={W_in}u L={L}
+
+* ── NMOS latch (M3, M4) ──────────────────────────────────────────────────────
+* Source = integration node (VXP / VXN).  Gate = cross-coupled latch node.
+* Key: Vgs_M3 = VLN − VXP.  As VXP drops, Vgs_M3 rises → M3 turns ON
+* and pulls VLP low through the chain GND→M0→M1→VXP→M3→VLP (NMOS regen phase).
+M3 VLP VLN VXP 0 nmos W={W_lat_n}u L={L}
+M4 VLN VLP VXN 0 nmos W={W_lat_n}u L={L}
+
+* ── PMOS latch (M5, M6) ──────────────────────────────────────────────────────
+* Cross-coupled.  When VLP drops far enough, M6 (gate=VLP) turns ON and pulls
+* VLN toward VDD; simultaneously M5 (gate=VLN→VDD) turns OFF → full PMOS regen.
+M5 VLP VLN VDD VDD pmos W={W_lat_p}u L={L}
+M6 VLN VLP VDD VDD pmos W={W_lat_p}u L={L}
+
+* ── Output inverters (M11–M14) ───────────────────────────────────────────────
+* OUTP = NOT(VLP):  HIGH (=1) when VLP=0, i.e. when INP > INN.
+* OUTN = NOT(VLN):  HIGH (=1) when VLN=0, i.e. when INN > INP.
+* Both outputs are LOW (=0) during reset (VLP = VLN = VDD).
+M11 OUTP VLP VDD VDD pmos W={W_inv_p}u L={L}
+M12 OUTP VLP 0   0   nmos W={W_inv_n}u L={L}
+M13 OUTN VLN VDD VDD pmos W={W_inv_p}u L={L}
+M14 OUTN VLN 0   0   nmos W={W_inv_n}u L={L}
+
+.ends comparator_strongarm

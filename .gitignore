@@ -1,0 +1,7 @@
+references/
+
+.claude/
+
+comparator/assets/logs
+comparator/assets/__pycache__/
+comparator/assets/plots

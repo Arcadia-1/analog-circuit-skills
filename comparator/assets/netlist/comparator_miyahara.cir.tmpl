@@ -1,0 +1,89 @@
+* Miyahara Dynamic Comparator — DUT Subcircuit
+* Topology: 9-transistor core (PMOS precharge + PMOS cross-coupled latch +
+*           NMOS input pair in parallel with NMOS cross-coupled latch + NMOS tail)
+*           + 4-transistor output inverter stage.
+* Reference: Miyahara et al., ISSCC 2008 / Fig. in comparator/references/miyahara.png
+* Technology: parameterized (L={L}, model via testbench .include)
+*
+* Ports (in order):
+*   INP  — differential input (+)
+*   INN  — differential input (−)
+*   CLK  — clock  (evaluate on CLK=1, reset on CLK=0)
+*   VDD  — positive supply
+*   OUTP — digital output (+), HIGH when INP > INN  (same convention as StrongArm)
+*   OUTN — digital output (−), HIGH when INN > INP
+*
+* Internal latch nodes:
+*   VS   — tail source node
+*   VLP  — latch node (+), floats to VDD when INP > INN
+*   VLN  — latch node (−), floats to GND  when INP > INN
+*
+* Operation summary
+* ─────────────────
+* Reset phase (CLK=0):
+*   M9, M10 (PMOS, G=CLK) turn ON  → VLP = VLN = VDD
+*   Mb (NMOS, G=CLK) turns  OFF    → tail disconnected; no static current
+*
+* Evaluate phase (CLK=1):
+*   Mb ON; M9/M10 OFF.
+*   Input pair M3 (G=INN) and M4 (G=INP) simultaneously discharge VLP and VLN.
+*   If INP > INN: M4 draws more current → VLN falls faster than VLP.
+*   Positive-feedback kicks in:
+*     NMOS latch: M8 (G=VLP≈VDD) keeps pulling VLN toward GND.
+*                 M7 (G=VLN→0)   turns OFF,  stops pulling VLP down.
+*     PMOS latch: M5 (G=VLN→0)   turns ON,   pulls VLP firmly to VDD.
+*                 M6 (G=VLP=VDD) turns OFF,   stops pulling VLN up.
+*   Result: VLP → VDD, VLN → GND.
+*
+* Output inverters produce OUTP = NOT(VLN), OUTN = NOT(VLP):
+*   INP > INN → VLN=0  → OUTP=1 ; VLP=VDD → OUTN=0   ✓
+*   Both LOW during reset (VLP=VLN=VDD)                ✓  (same as StrongArm)
+
+.subckt comparator_miyahara INP INN CLK VDD OUTP OUTN
+
+* ── Tail NMOS (Mb) ───────────────────────────────────────────────────────────
+* ON during CLK=1 (evaluate). Provides the common current path to GND.
+Mb  VS  CLK 0   0   nmos W={W_tail}u L={L}
+
+* ── Input NMOS pair (M3, M4) ─────────────────────────────────────────────────
+* Both drain into the latch nodes; source = VS (shared tail).
+* M3 (G=INN) discharges VLP; M4 (G=INP) discharges VLN.
+* Because M4 is gated by INP and M3 by INN, the side with the LARGER input
+* draws more current and discharges its latch node faster.
+* INP > INN → M4 stronger → VLN falls first → OUTP will go HIGH.
+M3  VLP INN VS  0   nmos W={W_in}u L={L}
+M4  VLN INP VS  0   nmos W={W_in}u L={L}
+
+* ── NMOS cross-coupled latch (M7, M8) ────────────────────────────────────────
+* In parallel with input pair on the same VLP/VLN nodes.
+* M7: gate=VLN.  As VLN falls, M7 turns OFF → stops discharging VLP.
+* M8: gate=VLP.  VLP stays high → M8 remains ON → accelerates VLN discharge.
+* This cross-coupling creates positive feedback that locks the decision.
+M7  VLP VLN VS  0   nmos W={W_lat_n}u L={L}
+M8  VLN VLP VS  0   nmos W={W_lat_n}u L={L}
+
+* ── PMOS precharge (M9, M10) ─────────────────────────────────────────────────
+* Gate = CLK.  ON when CLK=0 (reset phase): charge VLP = VLN = VDD.
+* OFF during evaluate; do not load latch nodes during regeneration.
+M9  VLP CLK VDD VDD pmos W={W_rst}u L={L}
+M10 VLN CLK VDD VDD pmos W={W_rst}u L={L}
+
+* ── PMOS cross-coupled latch (M5, M6) ────────────────────────────────────────
+* M5: gate=VLN, source=VDD, drain=VLP.
+*     When VLN falls → |Vgs_M5| increases → M5 pulls VLP strongly to VDD.
+* M6: gate=VLP, source=VDD, drain=VLN.
+*     When VLP=VDD → Vgs_M6=0 → M6 OFF → does not fight the VLN discharge.
+* Together with the NMOS latch this creates rail-to-rail regeneration.
+M5  VLP VLN VDD VDD pmos W={W_lat_p}u L={L}
+M6  VLN VLP VDD VDD pmos W={W_lat_p}u L={L}
+
+* ── Output inverters (M11–M14) ───────────────────────────────────────────────
+* OUTP = NOT(VLN):  HIGH (=1) when VLN=0, i.e. when INP > INN.
+* OUTN = NOT(VLP):  HIGH (=1) when VLP=0, i.e. when INN > INP.
+* Both outputs are LOW (=0) during reset (VLP = VLN = VDD).
+M11 OUTP VLN VDD VDD pmos W={W_inv_p}u L={L}
+M12 OUTP VLN 0   0   nmos W={W_inv_n}u L={L}
+M13 OUTN VLP VDD VDD pmos W={W_inv_p}u L={L}
+M14 OUTN VLP 0   0   nmos W={W_inv_n}u L={L}
+
+.ends comparator_miyahara
