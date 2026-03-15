@@ -20,7 +20,7 @@ from scipy.special import erfc
 from scipy.stats import norm as _norm
 
 from ngspice_common import (
-    LOG_DIR, MODEL_DIR, NETLIST_SAVE_DIR,
+    LOG_DIR, MODEL_DIR, NETLIST_SAVE_DIR, NETLIST_DUT_DIR, NETLIST_TB_DIR,
     render_template, run_ngspice, parse_wrdata, spath,
 )
 
@@ -90,7 +90,7 @@ def render_dut() -> tuple:
     Returns (include_line_str, None).
     Callers must NOT os.unlink() the second return value.
     """
-    from ngspice_common import NETLIST_SAVE_DIR
+    from ngspice_common import NETLIST_DUT_DIR
     text = render_template(
         "comparator_strongarm.cir.tmpl",
         L       = f"{L_NM}n",
@@ -102,7 +102,7 @@ def render_dut() -> tuple:
         W_inv_p = W["inv_p"],
         W_inv_n = W["inv_n"],
     )
-    dut_path = NETLIST_SAVE_DIR / "comparator_strongarm_dut.cir"
+    dut_path = NETLIST_DUT_DIR / "comparator_strongarm_dut.cir"
     dut_path.write_text(text, encoding="utf-8")
     return f".include {spath(dut_path)}", None
 
@@ -121,10 +121,9 @@ def common_kw(dut_include: str) -> dict:
 
 
 def run_netlist(tmpl_name, kw, log_path, timeout=600):
-    """Render testbench template, save to netlists/, run ngspice, return exit code."""
+    """Render testbench template, save to netlists/testbench/, run ngspice, return exit code."""
     text = render_template(tmpl_name, **kw)
-    # Save a human-readable copy alongside the log
-    save_path = NETLIST_SAVE_DIR / (Path(log_path).stem + ".cir")
+    save_path = NETLIST_TB_DIR / (Path(log_path).stem + ".cir")
     save_path.write_text(text, encoding="utf-8")
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".cir", delete=False, encoding="utf-8"

@@ -11,19 +11,29 @@ description: "StrongArm dynamic comparator simulation and analysis skill. Use wh
 
 ```
 assets/
+├── comparator_common.py            — circuit parameters, DUT rendering, signal-processing helpers
 ├── ngspice_common.py               — shared utilities: paths, runner, parser, template renderer
 ├── models/
 │   └── ptm45hp.lib                 — PTM 45nm HP BSIM4 model (VDD=1.0V)
 ├── netlist/
-│   ├── comparator_strongarm.cir.tmpl  — DUT: .subckt comparator_strongarm (parameterized L, W)
-│   ├── testbench_cmp_tran.cir.tmpl    — TB: 5-cycle waveform (all internal nodes + VDD current)
-│   ├── testbench_cmp_tran_noise.cir.tmpl — TB: 1000-cycle statistics (noise counting)
-│   └── testbench_cmp_ramp.cir.tmpl    — TB: 100-cycle ramp input (−1mV → +1mV)
-├── simulate_tran_strongarm_comp.py — simulation engine (5 parallel runs) + compute_fom()
-├── plot_tran_strongarm_comp.py     — plotting (waveform + statistics figures)
-├── run_tran_strongarm_comp.py      — entry point
-├── logs/                           — ngspice logs + fom_report.txt (auto-created)
-└── plots/                          — output PNGs (auto-created)
+│   ├── comparator_strongarm.cir.tmpl     — DUT: .subckt comparator_strongarm (parameterised L, W)
+│   ├── testbench_cmp_tran.cir.tmpl       — TB: 3-cycle waveform (all internal nodes)
+│   ├── testbench_cmp_tran_noise.cir.tmpl — TB: N-cycle statistics with trnoise
+│   └── testbench_cmp_ramp.cir.tmpl       — TB: 100-cycle ramp input (−2mV → +2mV)
+├── simulate_tran_strongarm_wave.py — simulation backend: 3-cycle waveform + τ extraction
+├── simulate_tran_strongarm_noise.py — simulation backend: noise (probit) + power + Tcmp
+├── simulate_tran_strongarm_ramp.py — simulation backend: ramp transfer curve
+├── plot_tran_strongarm_wave.py     — plot: waveform (all internal nodes)
+├── plot_tran_strongarm_noise.py    — plot: noise CDF fit + statistics
+├── plot_tran_strongarm_ramp.py     — plot: ramp transfer curve
+├── run_tran_strongarm_comp.py      — entry point (runs all three in parallel)
+├── run_tran_strongarm_wave.py      — standalone: waveform only
+├── run_tran_strongarm_noise.py     — standalone: noise + FOM only
+├── run_tran_strongarm_ramp.py      — standalone: ramp only
+├── run_tcmp_sweep_plot.py          — sweep W_tail/inp/lat_n/lat_p → Tcmp plots
+├── run_tau_sweep_plot.py           — sweep W_lat_n/lat_p/inp → τ plots
+├── run_power_sweep_plot.py         — sweep W_tail/inp/lat_n/lat_p → power plots
+└── run_sweep_*/simulate_sweep_*/plot_sweep_*  — analysis sweeps (VCM, noise BW, input amplitude)
 ```
 
 ## Running
@@ -73,10 +83,10 @@ Transient noise is modeled as two independent `trnoise` voltage sources at INP/I
 - Noise bandwidth: 10 GHz → `nt = 1/(2×10GHz) = 50 ps`
 - Differential noise std: `σ_diff = √2 × na`
 
-To change noise level or bandwidth, edit `simulate_tran_strongarm_comp.py`:
+To change noise level or bandwidth, edit `comparator_common.py`:
 ```python
-SIGMA_DIFF = 600e-6   # V  input-referred differential RMS noise
-NOISE_BW   = 10e9     # Hz noise bandwidth
+NOISE_NA = 300e-6    # V  noise amplitude per side
+NOISE_BW = 100e9     # Hz noise bandwidth
 ```
 
 ## Transistor Sizes (all L = 45 nm)
@@ -90,7 +100,7 @@ NOISE_BW   = 10e9     # Hz noise bandwidth
 | Reset M7–M10 | 1.0 | Reset speed |
 | Output inv | 2.0 / 1.0 | PMOS / NMOS |
 
-Edit the `W = dict(...)` in `simulate_tran_strongarm_comp.py` to sweep sizes.
+Edit the `W = dict(...)` in `comparator_common.py` to change transistor sizes.
 
 ## Output & File Conventions
 

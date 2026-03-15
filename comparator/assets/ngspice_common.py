@@ -31,8 +31,10 @@ _WORK_ROOT = Path(_os.environ.get("ANALOG_WORK_DIR",
                                    str(_REPO_ROOT / "WORK")))
 LOG_DIR  = _WORK_ROOT / "logs"
 PLOT_DIR = _WORK_ROOT / "plots"
-NETLIST_SAVE_DIR = _REPO_ROOT / "netlists"
-for _d in (LOG_DIR, PLOT_DIR, NETLIST_SAVE_DIR):
+NETLIST_SAVE_DIR = _WORK_ROOT / "netlists"
+NETLIST_DUT_DIR  = NETLIST_SAVE_DIR / "dut"
+NETLIST_TB_DIR   = NETLIST_SAVE_DIR / "testbench"
+for _d in (LOG_DIR, PLOT_DIR, NETLIST_DUT_DIR, NETLIST_TB_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 
