@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-run_power_sweep_plot.py
-=======================
-Sweep W_tail / W_inp / W_lat_n / W_lat_p and plot average power vs. width.
+run_power_sweep_without_skill.py
+================================
+Sweep W_tail / W_inp / W_lat_n / W_lat_p (1–10 µm) and plot average power vs. width.
+Saves PNGs to the specified output directory.
 
 Power is measured with Vin=0 (balanced input), 10 clock cycles.
 Average power = VDD × mean(|i(vvdd)|) over the full simulation window.
-
-Run from comparator/assets/:
-    python run_power_sweep_plot.py
 """
 
 import os, math
@@ -21,11 +19,14 @@ from pathlib import Path
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 import comparator_common as cc
-from ngspice_common import LOG_DIR, PLOT_DIR, parse_wrdata, spath
+from ngspice_common import LOG_DIR, parse_wrdata, spath
+
+OUTPUT_DIR = Path("H:/analog-circuit-skills/comparator-workspace/iteration-1/power-vs-width-sweep/without_skill/outputs")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 PWR_NCYC  = 10
 PWR_TSTOP = PWR_NCYC * cc.TCLK    # 10 ns
-PWR_TSTEP = 50e-12                 # 50 ps — same resolution as noise sim
+PWR_TSTEP = 50e-12                 # 50 ps
 
 W_RANGE = list(range(1, 11))      # 1–10 µm, step 1 µm
 
@@ -33,8 +34,8 @@ W_RANGE = list(range(1, 11))      # 1–10 µm, step 1 µm
 def simulate_power() -> float:
     """
     Run 10-cycle Vin=0 simulation, return average power in µW.
-    Uses testbench_cmp_tran_noise.cir.tmpl with trnoise injected
-    (to match real operating conditions) but with Vin_diff = 0.
+    Uses testbench_cmp_tran_noise.cir.tmpl (with trnoise injected)
+    but with Vin_diff = 0.
     """
     dut_include, dut_tmp = cc.render_dut()
     try:
@@ -139,7 +140,7 @@ for key, label in sweeps_cfg:
     ax.tick_params(labelsize=9)
 
 plt.tight_layout()
-out1 = PLOT_DIR / "power_sweep_width.png"
+out1 = OUTPUT_DIR / "power_sweep_width.png"
 fig.savefig(out1, dpi=150, bbox_inches="tight")
 print(f"\nSaved: {out1}")
 plt.close(fig)
@@ -172,9 +173,43 @@ ax2.legend(fontsize=9)
 ax2.tick_params(labelsize=9)
 
 plt.tight_layout()
-out2 = PLOT_DIR / "power_sweep_all.png"
+out2 = OUTPUT_DIR / "power_sweep_all.png"
 fig2.savefig(out2, dpi=150, bbox_inches="tight")
 print(f"Saved: {out2}")
 plt.close(fig2)
+
+
+# ── Collect numeric results and write summary ───────────────────────────────────
+summary_lines = []
+summary_lines.append("Power vs. Width Sweep — Numeric Results")
+summary_lines.append("=" * 50)
+summary_lines.append(f"Circuit: StrongArm, 45nm PTM HP, VDD=1.0V, FCLK=1GHz, Vin=0V, 10 cycles")
+summary_lines.append(f"Width range: 1–10 µm (step 1 µm)\n")
+
+for key, label in sweeps_cfg:
+    nom_w = {
+        "tail": 4.0, "inp": 4.0, "lat_n": 1.0, "lat_p": 2.0
+    }[key]
+    res = data[key]
+    summary_lines.append(f"--- {label} (nominal W={nom_w}µm) ---")
+    for w, p in res:
+        marker = " <-- nominal" if w == nom_w else ""
+        tag = f"{p:.2f} µW" if not math.isnan(p) else "NaN"
+        summary_lines.append(f"  W={w:2d} µm:  P_avg = {tag}{marker}")
+    # Sensitivity at nominal
+    valid = [(w, p) for w, p in res if not math.isnan(p)]
+    if len(valid) >= 2:
+        ws = [r[0] for r in valid]
+        ps = [r[1] for r in valid]
+        dp = ps[-1] - ps[0]
+        dw = ws[-1] - ws[0]
+        sens = dp / dw
+        summary_lines.append(f"  Sensitivity (1–10µm): dP/dW = {sens:.2f} µW/µm")
+    summary_lines.append("")
+
+summary_text = "\n".join(summary_lines)
+summary_path = OUTPUT_DIR / "summary.txt"
+summary_path.write_text(summary_text, encoding="utf-8")
+print(f"Saved: {summary_path}")
 
 print("\nDone.")

@@ -24,7 +24,10 @@ import comparator_common as cc
 from comparator_common import compute_tcmp, TCLK
 from simulate_tran_strongarm_wave import simulate_wave, WAVE_NCYC
 
-PLOT_DIR = Path("H:/analog-circuit-skills/WORK/plots")
+import os as _os
+_work_root = Path(_os.environ.get("ANALOG_WORK_DIR",
+                                   "H:/analog-circuit-skills/WORK"))
+PLOT_DIR = _work_root / "plots"
 PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 W_RANGE = list(range(1, 11))   # 1–10 µm, step 1 µm

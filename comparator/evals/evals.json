@@ -1,0 +1,265 @@
+{
+  "skill_name": "comparator",
+  "evals": [
+    {
+      "id": 1,
+      "name": "waveform-internal-nodes",
+      "prompt": "帮我跑StrongArm比较器瞬态仿真，画VXP/VXN、VLP/VLN、OUTP/OUTN波形，Vin=+1mV",
+      "expected_output": "运行wave仿真，保存含内部节点波形的PNG图",
+      "files": [],
+      "assertions": [
+        "生成了PNG波形图文件",
+        "输出目录包含wrdata数据文件（vxp/vxn/vlp/vln/outp/outn）",
+        "波形图中显示了VXP/VXN、VLP/VLN、OUTP/OUTN三组信号",
+        "summary中提到了Vin=1mV或差分输入"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "full-characterization",
+      "prompt": "我想对这个比较器做一次完整的特性分析，波形、噪声、传输曲线都要，最后给我FOM报告",
+      "expected_output": "并行运行wave+noise+ramp三种仿真，输出波形图、噪声图、传输曲线图和fom_report.txt",
+      "files": [],
+      "assertions": [
+        "至少生成了3张PNG图（waveform, noise, ramp各一张）",
+        "输出包含FOM报告（sigma_n/FOM1/FOM2数值）",
+        "运行了3种独立仿真（wave+noise+ramp）",
+        "FOM报告中sigma_n在200-600µV范围内"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "waveform-timing-check",
+      "prompt": "只跑波形就好，3个周期，帮我看一下各内部节点的充放电时序对不对，特别是VXP和VLP的关系",
+      "expected_output": "运行wave仿真，生成波形图，对VXP/VLP时序作出分析说明",
+      "files": [],
+      "assertions": [
+        "生成了PNG波形图",
+        "分析中提到VXP先于VLP下降（积分阶段先于锁存阶段）",
+        "分析中提到了时序关系或相位顺序",
+        "输出包含wrdata数据文件"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "ramp-transfer-curve",
+      "prompt": "帮我跑一下ramp仿真，输入从-2mV扫到+2mV，看传输曲线，判断一下噪声区间有多宽",
+      "expected_output": "运行ramp仿真，生成传输曲线图，说明过渡区宽度",
+      "files": [],
+      "assertions": [
+        "生成了PNG传输曲线图",
+        "分析中提到了过渡区宽度（transition region）",
+        "输出包含ramp仿真数据文件",
+        "过渡区宽度估计在0.5-2mV量级"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "noise-extraction-fom",
+      "prompt": "帮我提取输入referred噪声sigma_n，probit方法，1000个周期，给出sigma和FOM1/FOM2",
+      "expected_output": "运行noise仿真，输出sigma_n（µV）、FOM1、FOM2数值和噪声图",
+      "files": [],
+      "assertions": [
+        "输出包含sigma_n数值（单位µV）",
+        "输出包含FOM1和FOM2数值",
+        "使用了probit方法（norm.ppf或Phi^-1）",
+        "运行了1000个周期的噪声仿真"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "noise-probit-vs-cdf",
+      "prompt": "sigma_n用单点probit和多点CDF拟合两种方法提取有什么区别？分别解释原理，并说明这个技能用的是哪种",
+      "expected_output": "说明单点probit和多点CDF拟合的原理、精度、适用条件，并指出本skill采用单点probit（0.35mV）",
+      "files": [],
+      "assertions": [
+        "解释了单点probit方法的原理",
+        "解释了多点CDF拟合方法的原理",
+        "比较了两种方法的优缺点",
+        "指出本skill使用单点probit方法（Vin_fixed=0.35mV）"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "noise-sigma-hand-calculation",
+      "prompt": "噪声仿真跑完了，结果P(1)=84%，Vin_fixed=0.35mV，帮我算sigma_n是多少，FOM怎么算",
+      "expected_output": "正确计算sigma_n = Vin/norm.ppf(0.84) ≈ 0.35mV，说明FOM1 = E_cycle × sigma_n²",
+      "files": [],
+      "assertions": [
+        "计算出norm.ppf(0.84) ≈ 0.9945",
+        "sigma_n结果约为0.35mV（352µV）",
+        "正确给出FOM1 = E_cycle × sigma_n² 公式",
+        "解释了probit反演的物理意义"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "noise-principle-figure",
+      "prompt": "帮我画一张噪声原理图，展示PDF、误差概率P_error随Vin变化的曲线，加上probit方法的几何解释",
+      "expected_output": "运行plot_noise_principle.py或等效代码，生成包含PDF/CDF/probit几何示意的PNG图",
+      "files": [],
+      "assertions": [
+        "生成了PNG原理示意图",
+        "图中包含高斯PDF或CDF曲线",
+        "图中展示了误差概率P_error或probit方法",
+        "有probit方法的几何解释标注"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "trnoise-vs-sigma-explanation",
+      "prompt": "trnoise注入的na=300uV/side，实际提取到的sigma_n为什么不等于300uV？帮我解释一下这个区别",
+      "expected_output": "说明na是每侧注入幅度、差分sigma_diff=√2×na、但sigma_n是电路响应，受bandwidth和电路时间常数影响",
+      "files": [],
+      "assertions": [
+        "解释了na是每侧注入的噪声幅度",
+        "提到差分噪声涉及√2因子",
+        "提到带宽（bandwidth）对噪声传递的影响",
+        "区分了注入噪声参数和实际提取的sigma_n"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "optimal-vin-for-probit",
+      "prompt": "为什么用0.35mV作为fixed Vin做单点probit提取？这个点选在哪里最优？",
+      "expected_output": "说明0.35mV ≈ 1σ时P(1)≈84%，probit的统计效率最高；远离1σ时方差增大",
+      "files": [],
+      "assertions": [
+        "提到1σ附近P(1)≈84%",
+        "解释了统计效率或Fisher信息量的概念",
+        "说明远离1σ点时精度下降的原因",
+        "给出了0.35mV与sigma_n的关系"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "noise-bw-sweep",
+      "prompt": "噪声带宽设成100GHz是什么意思？设低了会怎样？帮我做一个noise BW扫描看sigma_n的变化",
+      "expected_output": "运行noise BW扫描，生成sigma_n vs BW图；解释BW影响噪声decorrelation条件",
+      "files": [],
+      "assertions": [
+        "生成了sigma_n vs noise BW的扫描图（PNG）",
+        "解释了100GHz带宽的物理含义",
+        "说明BW过低时噪声采样间相关（correlated）",
+        "至少扫描了3个不同BW值"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "tcmp-vs-input-width",
+      "prompt": "输入差分对M1/M2宽度从1um扫到10um，Tcmp怎么变？帮我出图",
+      "expected_output": "运行Tcmp扫描（W_inp），生成Tcmp vs 宽度的PNG图",
+      "files": [],
+      "assertions": [
+        "生成了Tcmp vs W_inp的PNG图",
+        "X轴为W_inp（1-10µm），Y轴为Tcmp（ps）",
+        "图中Tcmp随W_inp变化趋势清晰",
+        "summary中包含对趋势的解释"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "tcmp-vs-tail-width",
+      "prompt": "尾管M0宽度对比较速度影响有多大？1um到10um扫描，画Tcmp曲线并解释物理原因",
+      "expected_output": "运行W_tail Tcmp扫描，生成图，说明W_tail↑→积分电流↑→Tcmp↓，但有收益递减",
+      "files": [],
+      "assertions": [
+        "生成了Tcmp vs W_tail的PNG图",
+        "Tcmp随W_tail增加而减小（速度提高）",
+        "解释了物理原因（尾电流增大→积分更快）",
+        "提到了收益递减或饱和效应"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "tau-vs-latch-width",
+      "prompt": "锁存管NMOS M3/M4和PMOS M5/M6的宽度分别对τ有什么影响？一起扫一下出图",
+      "expected_output": "运行τ扫描，生成τ vs W_lat_n和W_lat_p图，说明gm和C相互抵消导致τ较平坦",
+      "files": [],
+      "assertions": [
+        "生成了τ vs 锁存管宽度的PNG图",
+        "分别扫描了NMOS和PMOS锁存管",
+        "τ随宽度变化较平坦",
+        "解释了gm和C同比增加导致τ≈C/gm基本不变"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "tcmp-all-devices-comparison",
+      "prompt": "把四种管子（尾管/输入管/锁存NMOS/锁存PMOS）的Tcmp扫描放在一张图里对比，看哪个管子最敏感",
+      "expected_output": "运行run_tcmp_sweep_plot.py，生成所有设备对比图，指出哪个管子对Tcmp影响最大",
+      "files": [],
+      "assertions": [
+        "生成了包含4条曲线的PNG对比图",
+        "4种管子（tail/inp/lat_n/lat_p）都在同一图中",
+        "指出了对Tcmp最敏感的管子",
+        "summary中解释了敏感性差异的原因"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "power-vs-width-sweep",
+      "prompt": "各个管子宽度对平均功耗的影响，W从1到10um，画功耗扫描图",
+      "expected_output": "运行power sweep，生成P_avg vs 宽度的PNG图",
+      "files": [],
+      "assertions": [
+        "生成了功耗扫描PNG图",
+        "至少扫描了2种管子的宽度",
+        "Y轴单位为µW",
+        "功耗随宽度增加呈上升趋势（尾管）"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "vcm-sensitivity",
+      "prompt": "VCM从0.3V变到0.7V，噪声sigma_n怎么变？帮我做VCM敏感性扫描",
+      "expected_output": "运行VCM扫描，生成sigma_n vs VCM图",
+      "files": [],
+      "assertions": [
+        "生成了sigma_n vs VCM的PNG图",
+        "VCM范围覆盖0.3-0.7V",
+        "sigma_n随VCM有明显变化趋势",
+        "summary解释了VCM影响噪声的物理机制"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "strongarm-vs-miyahara",
+      "prompt": "StrongArm和Miyahara比较器，同样Vin=1mV，内部节点波形有什么区别？放一张图对比",
+      "expected_output": "运行run_compare_wave.py，生成对比波形图，指出两种拓扑的关键差异",
+      "files": [],
+      "assertions": [
+        "生成了对比波形PNG图（两种拓扑）",
+        "图中包含StrongArm和Miyahara两套波形",
+        "指出了两种拓扑的关键结构差异",
+        "提到了Miyahara无PMOS reset开关或等效差异"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "four-phases-theory",
+      "prompt": "StrongArm有几个工作阶段？M3的source为什么接VXP不接GND？积分阶段和锁存阶段的电流路径各是什么？",
+      "expected_output": "说明Reset/Integration/NMOS Latch/CMOS Latch四个阶段；解释M3 source=VXP使Vgs随VXP下降而增大的机制",
+      "files": [],
+      "assertions": [
+        "正确列出4个工作阶段（Reset/Integration/NMOS Latch/CMOS Latch）",
+        "解释了M3 source接VXP的原因（Vgs自动增大机制）",
+        "描述了积分阶段的电流路径（VDD→M0→M1/M2→VXP/VXN）",
+        "描述了锁存阶段的交叉耦合正反馈电流路径"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "tau-gm-c-verification",
+      "prompt": "τ=C/gm这个公式在StrongArm中是什么含义？为什么锁存管加宽τ几乎不变？帮我用仿真数据验证这个结论",
+      "expected_output": "解释τ≈C_latch/gm_latch，说明W↑时gm和C同比增加；引用τ扫描仿真数据佐证",
+      "files": [],
+      "assertions": [
+        "解释了τ=C/gm的物理含义（锁存再生时间常数）",
+        "说明W↑时gm和C同比增加→τ≈不变",
+        "引用了仿真数据验证τ平坦性",
+        "生成了τ vs 宽度的PNG图或引用已有数据"
+      ]
+    }
+  ]
+}

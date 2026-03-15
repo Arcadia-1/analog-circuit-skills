@@ -2,11 +2,11 @@
 """
 run_tran_strongarm_noise.py
 ===========================
-Standalone entry point: 13-point noise sweep (1000 cycles each) + FOM.
+Standalone entry point: single-point probit noise extraction (1000 cycles) + FOM.
 
 Usage
 -----
-  cd comparator/assets/
+  cd comparator/scripts
   python run_tran_strongarm_noise.py
 
 Outputs
@@ -28,38 +28,21 @@ def main():
     results = simulate_noise()
     fom     = compute_fom(results)
 
-    plot_noise(results["sweep"], results["params"], fom=fom)
+    # plot_noise expects (noise_pt, params, fom=...)
+    plot_noise(results["noise_pt"], results["params"], fom=fom)
 
     # ── Print summary ──────────────────────────────────────────────────────────
-    fit = fom["fit"]
-    p   = results["params"]
-
-    noise_elapsed = [r["elapsed"] for r in results["sweep"]]
-    t_wall = max(noise_elapsed)
-    t_cpu  = sum(noise_elapsed)
+    noise_pt = results["noise_pt"]
+    p        = results["params"]
 
     print("\n" + "=" * 62)
-    print("  TRANSFER CURVE SWEEP  (P(1) vs Vin)")
+    print("  NOISE EXTRACTION  (single-point probit)")
     print("=" * 62)
-    print(f"  {'Vin (mV)':>10}  {'HIGH':>6}  {'LOW':>6}  {'P(1) (%)':>10}")
-    print("  " + "-" * 38)
-    for r in results["sweep"]:
-        print(f"  {r['vin_mv']:>10.2f}  {r['count_1']:>6}  {r['count_0']:>6}  "
-              f"{r['p1']*100:>10.1f}")
-    print("=" * 62)
-
-    print(f"\n  Noise wall time : {t_wall:.1f}s  "
-          f"(slowest of {len(results['sweep'])} parallel points)")
-    print(f"  Noise CPU time  : {t_cpu:.1f}s  (sum over all points)")
-
-    print("\n" + "=" * 62)
-    print("  GAUSSIAN CDF FIT")
-    print("=" * 62)
-    print(f"  Fit converged : {'Yes' if fit['fit_ok'] else 'No'}")
-    print(f"  sigma_n       : {fom['sigma_uv']:.1f} uV  "
-          f"(+/- {fit['perr'][1]*1e6:.1f} uV)  [input-referred noise RMS]")
-    print(f"  mu (offset)   : {fom['mu_uv']:.1f} uV  "
-          f"(+/- {fit['perr'][0]*1e6:.1f} uV)  [input offset voltage]")
+    print(f"  Vin_fixed : {noise_pt['vin_mv']:.2f} mV")
+    print(f"  Cycles    : {SWEEP_NCYC}")
+    print(f"  COUNT_1   : {noise_pt['count_1']}")
+    print(f"  P(1)      : {noise_pt['p1']*100:.1f}%")
+    print(f"  sigma_n   : {noise_pt['sigma_uv']:.1f} uV  [input-referred RMS]")
     print("=" * 62)
 
     e_cycle_nj = fom['p_avg_uw'] / (p['FCLK'] / 1e9) * 1e-6
@@ -68,7 +51,6 @@ def main():
     print("  PERFORMANCE METRICS")
     print("=" * 62)
     print(f"  Noise  sigma_n : {fom['sigma_uv']:.1f} uV  [input-referred RMS]")
-    print(f"  Offset mu      : {fom['mu_uv']:.1f} uV  [input offset]")
     print(f"  Avg power      : {fom['p_avg_uw']:.2f} uW")
     print(f"  Energy/cycle   : {e_cycle_nj*1e6:.2f} fJ  =  {e_cycle_nj:.4e} nJ  (P / FCLK)")
     print(f"  Speed  Tcmp    : {fom['tcmp_ps']:.1f} ps  "

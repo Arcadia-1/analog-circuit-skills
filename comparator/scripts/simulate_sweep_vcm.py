@@ -35,8 +35,8 @@ from comparator_common import (
 )
 
 N_VCM          = 20
-VCM_START      = 0.50 * VDD
-VCM_STOP       = 0.75 * VDD
+VCM_START      = 0.30
+VCM_STOP       = 0.70
 VCM_VALS       = list(np.linspace(VCM_START, VCM_STOP, N_VCM))
 
 VIN_FIXED_MV   = NOISE_VIN_MV   # 0.5 mV fixed differential input

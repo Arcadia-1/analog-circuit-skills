@@ -12,4 +12,6 @@ netlists/
 __pycache__/
 *.pyc
 
-reference
+reference/
+bootstrap_reference/
+comparator-workspace/

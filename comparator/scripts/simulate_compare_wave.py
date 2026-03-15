@@ -8,6 +8,7 @@ Accepts an arbitrary Vin_diff so the same engine is used for both 1mV and 1µV c
 
 import os
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
