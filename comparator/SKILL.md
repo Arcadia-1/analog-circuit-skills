@@ -1,56 +1,94 @@
 ---
 name: comparator
-description: "StrongArm dynamic comparator simulation and analysis skill. Use when the user wants to: (1) simulate a StrongArm comparator with ngspice, (2) run transient noise simulation and count output statistics (0/1) over many cycles, (3) plot transition waveforms showing internal nodes (VXP/VXN, VLP/VLN, OUTP/OUTN), (4) simulate ramp input and observe the noise-induced transition region, (5) measure comparison time Tcmp, average power, energy per cycle, or FOM, (6) extract input-referred noise sigma via probit / Gaussian CDF fit, (7) measure or simulate offset voltage using binary-search method, (8) learn the StrongArm topology, four operating phases (Reset/Integration/NMOS Latch/CMOS Latch), noise theory, or transistor sizing trade-offs. Requires: ngspice installed, Python 3 with numpy/matplotlib/scipy."
+description: "StrongArm dynamic comparator simulation and analysis skill. Use this skill whenever the user wants to simulate, analyse, or learn about a StrongArm (or similar dynamic) comparator. Trigger on any of: (1) run a comparator transient simulation in ngspice, (2) plot waveforms of internal nodes (VXP/VXN, VLP/VLN, OUTP/OUTN), (3) measure or sweep comparison time Tcmp, latch time constant τ, average power, energy per cycle, or FOM, (4) extract input-referred noise sigma via noise counting / probit / Gaussian CDF fit, (5) sweep transistor widths (tail, input pair, latch NMOS/PMOS) to study speed–power–noise trade-offs, (6) simulate offset voltage with ramp or binary-search method, (7) learn the StrongArm topology, four operating phases, noise/offset/speed theory, or transistor sizing guidance. Requires: ngspice on PATH, Python 3 + numpy/matplotlib/scipy."
 ---
 
 # StrongArm Comparator Skill
 
-**Dependencies**: `ngspice`, Python 3 + `numpy`, `matplotlib`, `scipy`.
+**Dependencies**: `ngspice` on PATH, Python 3 + `numpy`, `matplotlib`, `scipy`.
 
-## Asset Layout
+## Layout
 
 ```
-assets/
-├── comparator_common.py            — circuit parameters, DUT rendering, signal-processing helpers
-├── ngspice_common.py               — shared utilities: paths, runner, parser, template renderer
-├── models/
-│   └── ptm45hp.lib                 — PTM 45nm HP BSIM4 model (VDD=1.0V)
-├── netlist/
-│   ├── comparator_strongarm.cir.tmpl     — DUT: .subckt comparator_strongarm (parameterised L, W)
-│   ├── testbench_cmp_tran.cir.tmpl       — TB: 3-cycle waveform (all internal nodes)
-│   ├── testbench_cmp_tran_noise.cir.tmpl — TB: N-cycle statistics with trnoise
-│   └── testbench_cmp_ramp.cir.tmpl       — TB: 100-cycle ramp input (−2mV → +2mV)
-├── simulate_tran_strongarm_wave.py — simulation backend: 3-cycle waveform + τ extraction
-├── simulate_tran_strongarm_noise.py — simulation backend: noise (probit) + power + Tcmp
-├── simulate_tran_strongarm_ramp.py — simulation backend: ramp transfer curve
-├── plot_tran_strongarm_wave.py     — plot: waveform (all internal nodes)
-├── plot_tran_strongarm_noise.py    — plot: noise CDF fit + statistics
-├── plot_tran_strongarm_ramp.py     — plot: ramp transfer curve
-├── run_tran_strongarm_comp.py      — entry point (runs all three in parallel)
-├── run_tran_strongarm_wave.py      — standalone: waveform only
-├── run_tran_strongarm_noise.py     — standalone: noise + FOM only
-├── run_tran_strongarm_ramp.py      — standalone: ramp only
-├── run_tcmp_sweep_plot.py          — sweep W_tail/inp/lat_n/lat_p → Tcmp plots
-├── run_tau_sweep_plot.py           — sweep W_lat_n/lat_p/inp → τ plots
-├── run_power_sweep_plot.py         — sweep W_tail/inp/lat_n/lat_p → power plots
-└── run_sweep_*/simulate_sweep_*/plot_sweep_*  — analysis sweeps (VCM, noise BW, input amplitude)
+comparator/
+├── SKILL.md
+├── scripts/                        ← run from here (cd comparator/scripts)
+│   ├── ngspice_common.py           — paths, ngspice runner, parser, template renderer
+│   ├── comparator_common.py        — circuit params, DUT rendering, τ/Tcmp/noise helpers
+│   │
+│   ├── simulate_tran_strongarm_wave.py   — backend: 3-cycle waveform + τ extraction
+│   ├── simulate_tran_strongarm_noise.py  — backend: noise (probit) + power + Tcmp
+│   ├── simulate_tran_strongarm_ramp.py   — backend: ramp transfer curve
+│   ├── plot_tran_strongarm_wave.py       — plot: all internal nodes
+│   ├── plot_tran_strongarm_noise.py      — plot: CDF fit + statistics
+│   ├── plot_tran_strongarm_ramp.py       — plot: transfer curve
+│   │
+│   ├── run_tran_strongarm_comp.py   ← MAIN entry point (wave + noise + ramp in parallel)
+│   ├── run_tran_strongarm_wave.py   — standalone: waveform only
+│   ├── run_tran_strongarm_noise.py  — standalone: noise + FOM only
+│   ├── run_tran_strongarm_ramp.py   — standalone: ramp only
+│   │
+│   ├── run_tcmp_sweep_plot.py       — sweep W_tail/inp/lat_n/lat_p → Tcmp plots
+│   ├── run_tau_sweep_plot.py        — sweep W_lat_n/lat_p/inp → τ plots
+│   ├── run_power_sweep_plot.py      — sweep W_tail/inp/lat_n/lat_p → power plots
+│   │
+│   ├── run_sweep_input_amplitude.py — Vin_diff → Tcmp curve
+│   ├── run_sweep_vcm.py             — VCM → σ_n
+│   ├── run_sweep_noise_bw.py        — noise BW → σ_n
+│   ├── run_sweep_k_valid.py         — σ_n vs input amplitude (validation)
+│   ├── run_compare_wave.py          — StrongArm vs Miyahara waveform comparison
+│   └── diag_high_vcm.py            — diagnostic: behaviour at high VCM
+│
+├── assets/
+│   ├── netlist/                    ← SPICE templates (*.cir.tmpl)
+│   └── models/ptm45hp.lib          ← PTM 45nm HP BSIM4 model
+│
+└── references/                     ← read when user asks about theory/noise/offset
+    ├── 01_theory.md
+    ├── 02_speed.md
+    ├── 03_noise.md
+    └── 04_offset.md
 ```
+
+All generated files (logs, plots, netlists) go to `WORK/` at the repo root — never inside the skill package. Override with env-var `ANALOG_WORK_DIR`.
+
+## Task → Script Decision Guide
+
+| User asks about | Script to run |
+|-----------------|---------------|
+| Full characterisation (waveform + noise + ramp) | `run_tran_strongarm_comp.py` |
+| Waveform / internal nodes only | `run_tran_strongarm_wave.py` |
+| Noise sigma / FOM only | `run_tran_strongarm_noise.py` |
+| Ramp transfer curve only | `run_tran_strongarm_ramp.py` |
+| Tcmp vs transistor width | `run_tcmp_sweep_plot.py` |
+| τ vs transistor width | `run_tau_sweep_plot.py` |
+| Power vs transistor width | `run_power_sweep_plot.py` |
+| Tcmp vs input amplitude | `run_sweep_input_amplitude.py` |
+| Noise vs VCM | `run_sweep_vcm.py` |
+| Noise vs noise bandwidth | `run_sweep_noise_bw.py` |
+| StrongArm vs Miyahara comparison | `run_compare_wave.py` |
+| Theory / operating phases | Read `references/01_theory.md` |
+| Speed / Tcmp / τ theory | Read `references/02_speed.md` |
+| Noise theory / FOM | Read `references/03_noise.md` |
+| Offset voltage | Read `references/04_offset.md` |
 
 ## Running
 
 ```bash
-cd comparator/assets
+cd comparator/scripts
 python run_tran_strongarm_comp.py
 ```
 
-Runs 5 simulations in parallel (~13s on a modern PC):
-1. **Waveform** — Vin=+1mV, 5 cycles, all internal nodes
-2. **Stat Vin=+1mV** — 1000 cycles → count HIGH/LOW
-3. **Stat Vin=0mV** — 1000 cycles → count HIGH/LOW
-4. **Stat Vin=−1mV** — 1000 cycles → count HIGH/LOW
-5. **Ramp** — Vin ramps −1mV→+1mV, 100 cycles
+Runs 3 simulations in parallel (~10s on a modern PC):
+1. **Waveform** — Vin=+1mV, 3 cycles, all internal nodes → τ extracted
+2. **Noise** — 1000 cycles with trnoise → P(1) → σ_n via probit; also measures power and Tcmp
+3. **Ramp** — Vin ramps −2mV→+2mV, 100 cycles → transfer curve
 
-Outputs: `plots/strongarm_waveform.png`, `plots/strongarm_stats.png`.
+Key outputs in `WORK/`:
+- `plots/strongarm_waveform.png`
+- `plots/strongarm_noise.png`
+- `plots/strongarm_ramp.png`
+- `logs/fom_report.txt` — σ_n, P_avg, Tcmp, FOM1, FOM2
 
 ## Circuit Topology
 
@@ -76,56 +114,47 @@ Current path: GND → M0 → M1 → VXP → M3 → VLP.
 
 **Output polarity:** OUTP = NOT(VLP) = 1 when INP > INN.
 
-## Noise Model
-
-Transient noise is modeled as two independent `trnoise` voltage sources at INP/INN:
-- Noise amplitude per side: `na = σ_diff / √2`  (default σ_diff = 600 µV)
-- Noise bandwidth: 10 GHz → `nt = 1/(2×10GHz) = 50 ps`
-- Differential noise std: `σ_diff = √2 × na`
-
-To change noise level or bandwidth, edit `comparator_common.py`:
-```python
-NOISE_NA = 300e-6    # V  noise amplitude per side
-NOISE_BW = 100e9     # Hz noise bandwidth
-```
-
 ## Transistor Sizes (all L = 45 nm)
 
-| Device | W (µm) | Description |
-|--------|--------|-------------|
-| Tail M0 | 4.0 | Controls evaluation current |
-| Input M1/M2 | 4.0 | Wider → lower noise |
-| NMOS latch M3/M4 | 1.0 | Latch speed |
-| PMOS latch M5/M6 | 2.0 | Regeneration time constant τ |
-| Reset M7–M10 | 1.0 | Reset speed |
-| Output inv | 2.0 / 1.0 | PMOS / NMOS |
+Defined in `comparator_common.py` → `W = dict(...)`:
 
-Edit the `W = dict(...)` in `comparator_common.py` to change transistor sizes.
+| Device | W (µm) | Design note |
+|--------|--------|-------------|
+| Tail M0 | 4.0 | ↑W → faster integration; diminishing returns beyond 4µm |
+| Input M1/M2 | 4.0 | ↑W → lower noise, faster integration, but more VX cap |
+| NMOS latch M3/M4 | 1.0 | ↑W adds drain cap; τ nearly flat (gm and C cancel) |
+| PMOS latch M5/M6 | 2.0 | ↑W → shorter τ up to ~4µm, then saturates |
+| Reset M7–M10 | 1.0 | Reset speed; rarely a bottleneck |
+| Output inv PMOS | 2.0 | Output drive strength |
+| Output inv NMOS | 1.0 | Output drive strength |
+
+## Noise Model
+
+Two independent `trnoise` sources at INP/INN (band-limited white noise):
+
+```python
+# comparator_common.py
+NOISE_BW = 100e9        # Hz  (100 GHz — decorrelates between 1 GHz cycles)
+NOISE_NT = 1/(2*NOISE_BW)  # 5 ps  update interval
+NOISE_NA = 300e-6       # V   amplitude per side
+```
+
+Noise is a stimulus parameter only; true σ_n is extracted from P(1) statistics via the probit method: `σ_n = Vin_fixed / norm.ppf(P1)` with Vin_fixed = 0.35 mV.
 
 ## Output & File Conventions
 
-- **All generated files** (logs, plots, data) go to `H:\analog-circuit-skills\WORK\` — never
-  inside the skill package itself.
-  - Logs  → `WORK/logs/`
-  - Plots → `WORK/plots/`
-  - Override with env-var `ANALOG_WORK_DIR`.
 - **Never open/pop-up figures** — only save PNGs via `fig.savefig()` + `plt.close()`.
-- **Comparison plots: max 3 vertically stacked subplots.**
-  When comparing two topologies, group related signals together rather than giving
-  each signal its own row.  Suggested grouping for a 3-row comparison:
-  1. CLK + INP/INN  (shared stimulus)
-  2. Latch nodes VLP / VLN  (both topologies overlaid)
-  3. Output OUTP / OUTN     (both topologies overlaid)
+- **Netlists** → `WORK/netlists/dut/` (DUT) and `WORK/netlists/testbench/` (testbenches).
+- **Comparison plots: max 3 vertically stacked subplots.** Group related signals:
+  1. CLK + INP/INN
+  2. Latch nodes VLP/VLN
+  3. Output OUTP/OUTN
 
 ## References
 
-Four detailed reference files cover the full tutorial content:
-
-| File | Topic | Key content |
-|------|-------|-------------|
-| `references/01_theory.md` | Circuit theory & operating phases | StrongArm topology (14 transistors), 4-phase operation (Reset/Integration/NMOS Latch/CMOS Latch), latch regeneration $v_d = v_{d0}e^{t/\tau}$, simulation checkpoints |
-| `references/02_speed.md` | Tcmp and energy measurement | Tcmp definition, CROSS expression, energy expression, Tcmp vs Vin table (307→78 ps for 100µV→1V), τ extraction, ngspice Python equivalent |
-| `references/03_noise.md` | Input-referred noise | Error probability $P_{error}=\Phi(-V_{in}/\sigma)$, probit extraction, time-domain statistical method, PSS/PNoise setup (Cadence), transistor sizing vs noise, FOM1/FOM2 |
-| `references/04_offset.md` | Offset voltage | Offset vs noise distinction, ramp & binary-search methods, Verilog-A `_va_offset` module, mismatch cap injection (−5.5 mV/fF), Monte Carlo ($\sigma_{os}=3.45$ mV at W=10µm), Pelgrom scaling |
-
-Read the relevant file when the user asks about theory, simulation setup, noise, or offset.
+| File | Topic |
+|------|-------|
+| `references/01_theory.md` | Topology, 4-phase operation, latch regeneration |
+| `references/02_speed.md` | Tcmp definition, τ extraction, speed vs sizing |
+| `references/03_noise.md` | Error probability, probit method, FOM1/FOM2 |
+| `references/04_offset.md` | Offset vs noise, ramp & binary-search methods |

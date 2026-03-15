@@ -18,15 +18,16 @@ from pathlib import Path
 # ─────────────────────────────────────────────────────────────────────────────
 # Paths
 # ─────────────────────────────────────────────────────────────────────────────
-BASE_DIR    = Path(__file__).resolve().parent
-NETLIST_DIR = BASE_DIR / 'netlist'
-MODEL_DIR   = BASE_DIR / 'models'
+BASE_DIR    = Path(__file__).resolve().parent        # comparator/scripts/
+_ASSET_DIR  = BASE_DIR.parent / 'assets'            # comparator/assets/
+NETLIST_DIR = _ASSET_DIR / 'netlist'
+MODEL_DIR   = _ASSET_DIR / 'models'
 
 # All generated output (logs, plots, cached data) goes to WORK/ at the repo
 # root so the skill package stays clean.  The env-var ANALOG_WORK_DIR can
 # override this location if needed.
 import os as _os
-_REPO_ROOT = BASE_DIR.parent.parent          # .../analog-circuit-skills/
+_REPO_ROOT = BASE_DIR.parent.parent                  # .../analog-circuit-skills/
 _WORK_ROOT = Path(_os.environ.get("ANALOG_WORK_DIR",
                                    str(_REPO_ROOT / "WORK")))
 LOG_DIR  = _WORK_ROOT / "logs"
