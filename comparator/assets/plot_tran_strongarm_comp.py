@@ -20,10 +20,10 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from scipy.special import erfc
+from scipy.stats import norm
 
 from ngspice_common import PLOT_DIR
-from simulate_tran_strongarm_comp import fit_transfer_curve
+from comparator_common import NOISE_VIN_MV
 
 WAVE_PNG  = PLOT_DIR / "strongarm_waveform.png"
 NOISE_PNG = PLOT_DIR / "strongarm_noise.png"
@@ -129,83 +129,83 @@ def plot_waveform(wave, params):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 2: Transfer curve and Gaussian CDF fit (testbench_cmp_tran_noise)
+# Figure 2: Single-point probit noise result
 # ─────────────────────────────────────────────────────────────────────────────
-def plot_noise(sweep, params, fom=None):
-    """
-    Two-panel noise figure:
-      Left  : P(1) vs Vin scatter + fitted Gaussian CDF, annotated with sigma and mu
-      Right : Residuals (measured - fitted)
-    """
-    if not sweep:
-        print("  WARN: no sweep data to plot")
+def plot_noise(noise_pt, params, fom=None):
+    """Single-point probit: Gaussian PDF + CDF with measurement point."""
+    if noise_pt is None:
+        print("  WARN: no noise data to plot")
         return
 
-    fit = fit_transfer_curve(sweep)
-    vin_arr  = fit["vin_arr"] * 1e3        # V -> mV
-    p1_meas  = fit["p1_arr"] * 100         # fraction -> %
-    p1_fit   = fit["p1_fit"] * 100
+    sigma_uv = noise_pt.get("sigma_uv", float("nan"))
+    p1       = noise_pt.get("p1",       float("nan"))
+    vin_mv   = noise_pt.get("vin_mv",   NOISE_VIN_MV)
+    ncyc     = params.get("SWEEP_NCYC", "?")
 
-    # Dense CDF curve for plotting
-    vin_dense = np.linspace(vin_arr.min() - 0.5, vin_arr.max() + 0.5, 400) * 1e-3
-    p1_dense  = 0.5 * erfc(-(vin_dense - fit["mu_v"]) / (fit["sigma_v"] * np.sqrt(2))) * 100
+    if np.isnan(sigma_uv):
+        print("  WARN: sigma_uv is nan, skipping noise plot")
+        return
+
+    sigma_v = sigma_uv * 1e-6
+    x_mv    = np.linspace(-4 * sigma_v * 1e3, 4 * sigma_v * 1e3, 500)
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
     fig.suptitle(
-        f"StrongArm Comparator — Transfer Curve & Noise Extraction\n"
+        f"StrongArm Comparator — Noise Extraction (Single-Point Probit)\n"
         f"{params['L_NM']}nm PTM HP, VDD={params['VDD']}V, CLK=1GHz, "
-        f"{params['SWEEP_NCYC']} cycles/point, {len(sweep)} Vin levels",
+        f"{ncyc} cycles  |  "
+        f"Noise BW={params.get('NOISE_BW_GHZ', '?'):.0f} GHz",
         fontsize=12,
     )
 
-    # ── Left: P(1) vs Vin ────────────────────────────────────────────────────
+    # ── Left: Gaussian PDF ───────────────────────────────────────────────────
     ax0 = axes[0]
-    ax0.scatter(vin_arr, p1_meas, s=60, color=C_MEAS, zorder=5,
-                label=f"Measured ({params['SWEEP_NCYC']} cycles each)")
-    ax0.plot(vin_dense * 1e3, p1_dense, color=C_FIT, lw=2,
-             label="Gaussian CDF fit")
-
-    ax0.axhline(50, color="gray", lw=0.7, ls=":")
-    ax0.axvline(fit["mu_uv"] / 1e3, color="gray", lw=0.7, ls=":")   # offset line in mV
-
-    # Annotation box
-    fit_status = "converged" if fit["fit_ok"] else "FAILED"
-    ann = (
-        f"Fit ({fit_status})\n"
-        f"$\\sigma$ = {fit['sigma_uv']:.0f} $\\mu$V"
-        f"  ($\\pm${fit['perr'][1]*1e6:.0f} $\\mu$V)\n"
-        f"$\\mu$  = {fit['mu_uv']:.0f} $\\mu$V"
-        f"  ($\\pm${fit['perr'][0]*1e6:.0f} $\\mu$V)"
-    )
-    ax0.text(0.04, 0.96, ann, transform=ax0.transAxes,
-             fontsize=9, va="top", ha="left",
-             bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=C_FIT, alpha=0.85))
-
-    if fom is not None and not np.isnan(fom.get("fom1", float("nan"))):
-        fom_ann = (
-            f"FOM1 = {fom['fom1']:.3g} nJ·$\\mu$V$^2$\n"
-            f"FOM2 = {fom['fom2']:.3g} nJ·$\\mu$V$^2$·ns"
-        )
-        ax0.text(0.96, 0.04, fom_ann, transform=ax0.transAxes,
-                 fontsize=8, va="bottom", ha="right",
-                 bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="gray", alpha=0.85))
-
-    ax0.set_xlabel("Vin_diff (mV)", fontsize=10)
-    ax0.set_ylabel("P(output = 1)  (%)", fontsize=10)
-    ax0.set_title("Transfer Curve: P(1) vs Vin", fontsize=10)
-    ax0.set_ylim(-5, 105)
-    ax0.legend(fontsize=9, loc="center right")
+    pdf = norm.pdf(x_mv * 1e-3, 0, sigma_v) * 1e-3
+    ax0.plot(x_mv, pdf, color=C_FIT, lw=2,
+             label=f"N(0, σ²),  σ={sigma_uv:.0f} µV")
+    ax0.axvline(0,       color="gray", lw=0.8, ls="--")
+    ax0.axvline( vin_mv, color=C_MEAS, lw=1.5, ls="--",
+                label=f"k = {vin_mv:+.2f} mV")
+    x_shade = np.linspace(x_mv.min(), vin_mv, 300)
+    ax0.fill_between(x_shade,
+                     norm.pdf(x_shade * 1e-3, 0, sigma_v) * 1e-3,
+                     alpha=0.15, color=C_FIT,
+                     label=f"P(noise < k) = {p1*100:.1f}%")
+    ann = (f"σ_n = {sigma_uv:.0f} µV\n"
+           f"k   = {vin_mv:.2f} mV\n"
+           f"P(1)= {p1*100:.1f}%\n"
+           f"N   = {ncyc} cycles")
+    ax0.text(0.97, 0.97, ann, transform=ax0.transAxes,
+             fontsize=9, va="top", ha="right",
+             bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=C_FIT, alpha=0.9))
+    ax0.set_xlabel("Input-referred noise (mV)", fontsize=10)
+    ax0.set_ylabel("Probability density (/mV)", fontsize=10)
+    ax0.set_title("Input-Referred Noise PDF", fontsize=10)
+    ax0.legend(fontsize=9)
     ax0.grid(True, alpha=0.3)
 
-    # ── Right: Residuals ──────────────────────────────────────────────────────
+    # ── Right: CDF with measurement point ────────────────────────────────────
     ax1 = axes[1]
-    residuals = p1_meas - p1_fit
-    ax1.bar(vin_arr, residuals, width=np.diff(vin_arr).min() * 0.6,
-            color=[C_MEAS if r >= 0 else C_FIT for r in residuals], alpha=0.8)
-    ax1.axhline(0, color="black", lw=0.8)
+    cdf = norm.cdf(x_mv * 1e-3, 0, sigma_v) * 100
+    ax1.plot(x_mv, cdf, color=C_FIT, lw=2,
+             label=f"CDF  (σ={sigma_uv:.0f} µV)")
+    ax1.scatter([vin_mv], [p1 * 100], s=80, color=C_MEAS, zorder=5,
+                label=f"({vin_mv:.2f} mV,  {p1*100:.1f}%)")
+    ax1.axhline(50,       color="gray", lw=0.7, ls=":")
+    ax1.axvline(0,        color="gray", lw=0.7, ls=":")
+    ax1.axvline(vin_mv,   color=C_MEAS, lw=1.0, ls="--", alpha=0.6)
+    ax1.axhline(p1 * 100, color=C_MEAS, lw=1.0, ls="--", alpha=0.6)
+    if fom is not None and not np.isnan(fom.get("fom1", float("nan"))):
+        fom_ann = (f"FOM1 = {fom['fom1']:.3g} nJ·µV²\n"
+                   f"FOM2 = {fom['fom2']:.3g} nJ·µV²·ns")
+        ax1.text(0.04, 0.96, fom_ann, transform=ax1.transAxes,
+                 fontsize=8, va="top", ha="left",
+                 bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="gray", alpha=0.85))
     ax1.set_xlabel("Vin_diff (mV)", fontsize=10)
-    ax1.set_ylabel("Residual: measured - fit  (%)", fontsize=10)
-    ax1.set_title("Fit Residuals", fontsize=10)
+    ax1.set_ylabel("P(output = 1)  (%)", fontsize=10)
+    ax1.set_title("Transfer Curve CDF", fontsize=10)
+    ax1.set_ylim(-5, 105)
+    ax1.legend(fontsize=9, loc="center right")
     ax1.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -280,7 +280,7 @@ def plot_all(results, fom=None):
     """Create all three standalone figures from simulate_all() results."""
     params = results["params"]
     plot_waveform(results.get("wave"), params)
-    plot_noise(results.get("sweep", []), params, fom=fom)
+    plot_noise(results.get("noise_pt"), params, fom=fom)
     plot_ramp(results.get("ramp"), params, fom=fom)
     print(f"\n  Plots saved to: {PLOT_DIR}/")
     print(f"    {WAVE_PNG.name}")

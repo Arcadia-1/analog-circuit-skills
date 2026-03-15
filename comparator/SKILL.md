@@ -1,6 +1,6 @@
 ---
 name: comparator
-description: "StrongArm dynamic comparator simulation and analysis skill. Use when the user wants to: (1) simulate a StrongArm comparator with ngspice, (2) run transient noise simulation and count output statistics (0/1) over many cycles, (3) plot transition waveforms showing internal nodes (VXP/VXN, VLP/VLN, OUTP/OUTN), (4) simulate ramp input and observe the noise-induced transition region, (5) learn the StrongArm comparator topology, working phases, noise model, or performance metrics (Tcmp, power, FOM). Requires: ngspice installed, Python 3 with numpy/matplotlib/scipy."
+description: "StrongArm dynamic comparator simulation and analysis skill. Use when the user wants to: (1) simulate a StrongArm comparator with ngspice, (2) run transient noise simulation and count output statistics (0/1) over many cycles, (3) plot transition waveforms showing internal nodes (VXP/VXN, VLP/VLN, OUTP/OUTN), (4) simulate ramp input and observe the noise-induced transition region, (5) measure comparison time Tcmp, average power, energy per cycle, or FOM, (6) extract input-referred noise sigma via probit / Gaussian CDF fit, (7) measure or simulate offset voltage using binary-search method, (8) learn the StrongArm topology, four operating phases (Reset/Integration/NMOS Latch/CMOS Latch), noise theory, or transistor sizing trade-offs. Requires: ngspice installed, Python 3 with numpy/matplotlib/scipy."
 ---
 
 # StrongArm Comparator Skill
@@ -92,8 +92,30 @@ NOISE_BW   = 10e9     # Hz noise bandwidth
 
 Edit the `W = dict(...)` in `simulate_tran_strongarm_comp.py` to sweep sizes.
 
+## Output & File Conventions
+
+- **All generated files** (logs, plots, data) go to `H:\analog-circuit-skills\WORK\` — never
+  inside the skill package itself.
+  - Logs  → `WORK/logs/`
+  - Plots → `WORK/plots/`
+  - Override with env-var `ANALOG_WORK_DIR`.
+- **Never open/pop-up figures** — only save PNGs via `fig.savefig()` + `plt.close()`.
+- **Comparison plots: max 3 vertically stacked subplots.**
+  When comparing two topologies, group related signals together rather than giving
+  each signal its own row.  Suggested grouping for a 3-row comparison:
+  1. CLK + INP/INN  (shared stimulus)
+  2. Latch nodes VLP / VLN  (both topologies overlaid)
+  3. Output OUTP / OUTN     (both topologies overlaid)
+
 ## References
 
-- **Circuit theory & working phases**: See `references/comparator_theory.md`
-- **Noise simulation methods (time-domain + PSS/PNoise)**: See `references/noise_sim.md`
-- **Speed, power, and FOM measurement**: See `references/speed_sim.md`
+Four detailed reference files cover the full tutorial content:
+
+| File | Topic | Key content |
+|------|-------|-------------|
+| `references/01_theory.md` | Circuit theory & operating phases | StrongArm topology (14 transistors), 4-phase operation (Reset/Integration/NMOS Latch/CMOS Latch), latch regeneration $v_d = v_{d0}e^{t/\tau}$, simulation checkpoints |
+| `references/02_speed.md` | Tcmp and energy measurement | Tcmp definition, CROSS expression, energy expression, Tcmp vs Vin table (307→78 ps for 100µV→1V), τ extraction, ngspice Python equivalent |
+| `references/03_noise.md` | Input-referred noise | Error probability $P_{error}=\Phi(-V_{in}/\sigma)$, probit extraction, time-domain statistical method, PSS/PNoise setup (Cadence), transistor sizing vs noise, FOM1/FOM2 |
+| `references/04_offset.md` | Offset voltage | Offset vs noise distinction, ramp & binary-search methods, Verilog-A `_va_offset` module, mismatch cap injection (−5.5 mV/fF), Monte Carlo ($\sigma_{os}=3.45$ mV at W=10µm), Pelgrom scaling |
+
+Read the relevant file when the user asks about theory, simulation setup, noise, or offset.

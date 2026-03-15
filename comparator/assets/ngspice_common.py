@@ -16,14 +16,23 @@ import numpy as np
 from pathlib import Path
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Paths  (all relative to this script — no hardcoded absolute paths)
+# Paths
 # ─────────────────────────────────────────────────────────────────────────────
 BASE_DIR    = Path(__file__).resolve().parent
 NETLIST_DIR = BASE_DIR / 'netlist'
 MODEL_DIR   = BASE_DIR / 'models'
-LOG_DIR     = BASE_DIR / 'logs'
-PLOT_DIR    = BASE_DIR / 'plots'
-for _d in (LOG_DIR, PLOT_DIR):
+
+# All generated output (logs, plots, cached data) goes to WORK/ at the repo
+# root so the skill package stays clean.  The env-var ANALOG_WORK_DIR can
+# override this location if needed.
+import os as _os
+_REPO_ROOT = BASE_DIR.parent.parent          # .../analog-circuit-skills/
+_WORK_ROOT = Path(_os.environ.get("ANALOG_WORK_DIR",
+                                   str(_REPO_ROOT / "WORK")))
+LOG_DIR  = _WORK_ROOT / "logs"
+PLOT_DIR = _WORK_ROOT / "plots"
+NETLIST_SAVE_DIR = _REPO_ROOT / "netlists"
+for _d in (LOG_DIR, PLOT_DIR, NETLIST_SAVE_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 
@@ -41,10 +50,19 @@ def spath(p):
 
 
 def find_ngspice():
-    """Return the ngspice executable name (prefer ngspice_con on Windows)."""
+    """Return the ngspice executable path (prefer ngspice_con on Windows)."""
     if shutil.which("ngspice_con"):
         return "ngspice_con"
-    return "ngspice"
+    if shutil.which("ngspice"):
+        return "ngspice"
+    # Fallback: check known Windows install location
+    for candidate in [
+        r"C:\Program Files\Spice64\bin\ngspice_con.exe",
+        r"C:\Program Files\Spice64\bin\ngspice.exe",
+    ]:
+        if Path(candidate).exists():
+            return candidate
+    return "ngspice"  # let subprocess raise a clear error if still not found
 
 
 # ─────────────────────────────────────────────────────────────────────────────

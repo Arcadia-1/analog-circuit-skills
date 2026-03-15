@@ -13,12 +13,14 @@ Imported by:
 
 import tempfile
 import os
+from pathlib import Path
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.special import erfc
+from scipy.stats import norm as _norm
 
 from ngspice_common import (
-    LOG_DIR, MODEL_DIR,
+    LOG_DIR, MODEL_DIR, NETLIST_SAVE_DIR,
     render_template, run_ngspice, parse_wrdata, spath,
 )
 
@@ -50,7 +52,9 @@ W = dict(
     inv_n = 1.0,   # output inverter NMOS
 )
 
-MODEL_PATH = spath(MODEL_DIR / "ptm45hp.lib")
+MODEL_PATH   = spath(MODEL_DIR / "ptm45hp.lib")
+NOISE_VIN_MV = 0.35  # fixed differential (mV) for single-point noise extraction
+              # ≈ 1σ → P(1) ≈ 84%, optimal statistical efficiency for probit method
 
 # Sampling instant: 45% into the CLK high phase (after comparison settles)
 SAMPLE_OFFSET = 0.45 * (TCLK / 2)   # 0.225 ns after CLK rises
@@ -77,9 +81,16 @@ def circuit_params(extra=None):
 # ─────────────────────────────────────────────────────────────────────────────
 def render_dut() -> tuple:
     """
-    Render comparator_strongarm.cir.tmpl → temp file.
-    Returns (include_line_str, tmp_file_path_to_delete).
+    Render comparator_strongarm.cir.tmpl → netlists/comparator_strongarm_dut.cir.
+
+    The DUT parameters are all globals (L, W dict), so the rendered content is
+    identical on every call.  Writing to a fixed path avoids littering /tmp with
+    random-named files and makes the netlist inspectable at any time.
+
+    Returns (include_line_str, None).
+    Callers must NOT os.unlink() the second return value.
     """
+    from ngspice_common import NETLIST_SAVE_DIR
     text = render_template(
         "comparator_strongarm.cir.tmpl",
         L       = f"{L_NM}n",
@@ -91,12 +102,9 @@ def render_dut() -> tuple:
         W_inv_p = W["inv_p"],
         W_inv_n = W["inv_n"],
     )
-    f = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".cir", delete=False, encoding="utf-8"
-    )
-    f.write(text)
-    f.close()
-    return f".include {spath(f.name)}", f.name
+    dut_path = NETLIST_SAVE_DIR / "comparator_strongarm_dut.cir"
+    dut_path.write_text(text, encoding="utf-8")
+    return f".include {spath(dut_path)}", None
 
 
 def common_kw(dut_include: str) -> dict:
@@ -113,8 +121,11 @@ def common_kw(dut_include: str) -> dict:
 
 
 def run_netlist(tmpl_name, kw, log_path, timeout=600):
-    """Render testbench template, write temp file, run ngspice, return exit code."""
+    """Render testbench template, save to netlists/, run ngspice, return exit code."""
     text = render_template(tmpl_name, **kw)
+    # Save a human-readable copy alongside the log
+    save_path = NETLIST_SAVE_DIR / (Path(log_path).stem + ".cir")
+    save_path.write_text(text, encoding="utf-8")
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".cir", delete=False, encoding="utf-8"
     ) as f:
@@ -139,6 +150,69 @@ def sample_output(time_arr, outp_arr, ncyc, sample_offset=None):
     t_sample = np.arange(ncyc) * TCLK + sample_offset
     outp_s = np.interp(t_sample, time_arr, outp_arr)
     return (outp_s > VDD / 2).astype(int)
+
+
+def compute_tau_from_latch(time_arr, vlp_arr, vln_arr, ncyc):
+    """
+    Extract latch regeneration time constant τ from VLP/VLN waveforms.
+
+    During regeneration vdiff = |VLN - VLP| grows exponentially.
+    Two-threshold crossing:  τ = (t_hi - t_lo) / ln(V_hi / V_lo)
+
+    v_lo = 0.05 * VDD  — above noise floor
+    v_hi = 0.40 * VDD  — well below saturation
+
+    Returns mean τ in ps across valid cycles, or nan if extraction fails.
+    """
+    v_lo = 0.05 * VDD
+    v_hi = 0.40 * VDD
+    tau_list = []
+
+    for n in range(ncyc):
+        # Search from 10 ps after CLK rise (CLK TR=10ps, fully high by 10ps)
+        # to 92% into the clock period (accommodates slow-resolving corners).
+        # Must NOT start at 50ps — fast circuits (large W_inp) can fire before 50ps.
+        t_start = n * TCLK + 10e-12
+        t_end   = n * TCLK + 0.92 * TCLK
+
+        mask  = (time_arr >= t_start) & (time_arr < t_end)
+        t_win = time_arr[mask]
+        vdiff = np.abs(vln_arr[mask] - vlp_arr[mask])
+
+        if len(t_win) < 4:
+            continue
+
+        # First upward crossing of v_lo
+        t_lo = None
+        for i in range(len(vdiff) - 1):
+            if vdiff[i] < v_lo <= vdiff[i + 1]:
+                frac = (v_lo - vdiff[i]) / (vdiff[i + 1] - vdiff[i])
+                t_lo = t_win[i] + frac * (t_win[i + 1] - t_win[i])
+                break
+
+        if t_lo is None:
+            continue
+
+        # First upward crossing of v_hi after t_lo
+        t_hi = None
+        for i in range(len(vdiff) - 1):
+            if t_win[i] < t_lo:
+                continue
+            if vdiff[i] < v_hi <= vdiff[i + 1]:
+                frac = (v_hi - vdiff[i]) / (vdiff[i + 1] - vdiff[i])
+                t_hi = t_win[i] + frac * (t_win[i + 1] - t_win[i])
+                break
+
+        if t_hi is None:
+            continue
+
+        tau = (t_hi - t_lo) / np.log(v_hi / v_lo)
+        if tau > 0:
+            tau_list.append(tau)
+
+    if not tau_list:
+        return float("nan")
+    return float(np.mean(tau_list)) * 1e12   # → ps
 
 
 def compute_tcmp(time_arr, outp_arr, ncyc):
@@ -185,7 +259,10 @@ def _gauss_cdf(vin, mu, sigma):
 
 def fit_transfer_curve(sweep) -> dict:
     """
-    Fit P(1) vs Vin to a Gaussian CDF.
+    Fit P(1) vs Vin to a Gaussian CDF with mu pinned to 0.
+
+    mu is fixed at 0 — pre-layout simulation uses a symmetric circuit so
+    any apparent offset is a finite-sample artifact, not a real offset.
 
     Parameters
     ----------
@@ -194,32 +271,34 @@ def fit_transfer_curve(sweep) -> dict:
     Returns
     -------
     dict: mu_v, sigma_v, mu_uv, sigma_uv, vin_arr, p1_arr, p1_fit, fit_ok, perr
+          perr[0] = 0.0 (mu fixed), perr[1] = 1-sigma uncertainty on sigma_v
     """
     vin_arr = np.array([r["vin_mv"] * 1e-3 for r in sweep])
     p1_arr  = np.array([r["p1"]            for r in sweep])
 
-    mid_idx = np.argmin(np.abs(p1_arr - 0.5))
-    p0_mu   = vin_arr[mid_idx]
-    p0_sig  = 500e-6
+    p0_sig = 500e-6
 
     fit_ok = False
-    popt   = np.array([p0_mu, p0_sig])
-    pcov   = np.full((2, 2), np.nan)
+    sigma_v = p0_sig
+    pcov_sig = np.nan
 
     try:
         popt, pcov = curve_fit(
-            _gauss_cdf, vin_arr, p1_arr,
-            p0=[p0_mu, p0_sig],
-            bounds=([-5e-3, 50e-6], [5e-3, 5e-3]),
+            lambda vin, sigma: _gauss_cdf(vin, 0.0, sigma),
+            vin_arr, p1_arr,
+            p0=[p0_sig],
+            bounds=([50e-6], [5e-3]),
             maxfev=5000,
         )
+        sigma_v  = popt[0]
+        pcov_sig = pcov[0, 0]
         fit_ok = True
     except Exception as e:
         print(f"  [fit] WARNING: curve_fit failed: {e}")
 
-    mu_v, sigma_v = popt
-    perr = np.sqrt(np.diag(pcov)) if fit_ok else np.array([np.nan, np.nan])
-    p1_fit = _gauss_cdf(vin_arr, mu_v, abs(sigma_v))
+    mu_v = 0.0
+    perr = np.array([0.0, np.sqrt(pcov_sig) if fit_ok else np.nan])
+    p1_fit = _gauss_cdf(vin_arr, 0.0, abs(sigma_v))
 
     return dict(
         mu_v     = mu_v,
@@ -232,3 +311,26 @@ def fit_transfer_curve(sweep) -> dict:
         fit_ok   = fit_ok,
         perr     = perr,
     )
+
+
+def sigma_from_p1(p1, vin_v):
+    """
+    Compute input-referred noise sigma from a single (Vin, P1) measurement.
+
+    Formula:  sigma = vin_v / Phi^{-1}(P1)
+
+    where mu = 0 (symmetric pre-layout circuit) and Phi^{-1} is the
+    inverse normal CDF (probit function).
+
+    Parameters
+    ----------
+    p1    : float  P(output=1), must be in (0.5, 1.0)
+    vin_v : float  fixed differential input voltage in Volts (> 0)
+
+    Returns
+    -------
+    float : sigma_n in Volts, or nan if inputs are out of range
+    """
+    if not (0.5 < p1 < 1.0) or vin_v <= 0:
+        return float("nan")
+    return vin_v / _norm.ppf(p1)

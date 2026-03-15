@@ -36,7 +36,7 @@ def simulate_ramp() -> dict:
     try:
         ramp = _run_ramp(dut_include)
     finally:
-        os.unlink(dut_tmp)
+        if dut_tmp: os.unlink(dut_tmp)
 
     return {
         "ramp":   ramp,

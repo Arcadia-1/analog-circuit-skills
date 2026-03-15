@@ -46,6 +46,7 @@ from ngspice_common import (
     LOG_DIR, NETLIST_DIR, MODEL_DIR,
     render_template, run_ngspice, parse_wrdata, spath,
 )
+from comparator_common import sigma_from_p1, NOISE_VIN_MV
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Circuit / technology parameters
@@ -86,11 +87,12 @@ MODEL_PATH = spath(MODEL_DIR / "ptm45hp.lib")
 WAVE_TSTOP  = 3 * TCLK        # 3 ns — 3 cycles, internal node waveform
 WAVE_TSTEP  = 10e-12           # 10 ps
 
-# Sweep: 13 Vin levels, 1000 cycles each
-# Range covers full 0→100% transition; ±2mV is safe for ~300-700 uV sigma
-SWEEP_VIN_MV  = list(np.linspace(-1.5, 1.5, 13))   # mV, equally spaced
+# Single fixed differential input for noise extraction (probit method)
+VIN_FIXED_MV  = NOISE_VIN_MV   # 0.5 mV
+
+# Sweep: 3 points — noise (VIN_FIXED_MV), power (0mV), Tcmp (1mV)
 SWEEP_NCYC    = 1000
-SWEEP_TSTOP   = SWEEP_NCYC * TCLK   # 500 ns
+SWEEP_TSTOP   = SWEEP_NCYC * TCLK   # 1000 ns
 SWEEP_TSTEP   = 50e-12              # 50 ps
 
 # Sampling instant: 45% into the high phase (before CLK falls, after comparison)
@@ -169,6 +171,70 @@ def _sample_output(time_arr, outp_arr, ncyc, sample_offset):
     t_sample = np.arange(ncyc) * TCLK + sample_offset
     outp_s = np.interp(t_sample, time_arr, outp_arr)
     return (outp_s > VDD / 2).astype(int)
+
+
+def _compute_tau_from_latch(time_arr, vlp_arr, vln_arr, ncyc):
+    """
+    Extract latch regeneration time constant τ from VLP/VLN waveforms.
+
+    During regeneration, the latch differential vdiff = |VLN - VLP| grows
+    exponentially: vdiff(t) = v0 * exp(t/τ).
+
+    Method: two-threshold crossing on vdiff.
+        τ = (t_hi - t_lo) / ln(V_hi / V_lo)
+
+    V_lo = 0.05*VDD and V_hi = 0.40*VDD are chosen to sit in the exponential
+    region — above the noise floor and well below saturation.
+
+    Returns mean τ in ps across valid cycles, or nan if extraction fails.
+    """
+    v_lo = 0.05 * VDD
+    v_hi = 0.40 * VDD
+    tau_list = []
+
+    for n in range(ncyc):
+        # Search from 50 ps after CLK rise to 85% into the clock period
+        t_start = n * TCLK + 50e-12
+        t_end   = n * TCLK + 0.85 * TCLK
+
+        mask  = (time_arr >= t_start) & (time_arr < t_end)
+        t_win = time_arr[mask]
+        vdiff = np.abs(vln_arr[mask] - vlp_arr[mask])
+
+        if len(t_win) < 4:
+            continue
+
+        # First upward crossing of v_lo
+        t_lo = None
+        for i in range(len(vdiff) - 1):
+            if vdiff[i] < v_lo <= vdiff[i + 1]:
+                frac = (v_lo - vdiff[i]) / (vdiff[i + 1] - vdiff[i])
+                t_lo = t_win[i] + frac * (t_win[i + 1] - t_win[i])
+                break
+
+        if t_lo is None:
+            continue
+
+        # First upward crossing of v_hi after t_lo
+        t_hi = None
+        for i in range(len(vdiff) - 1):
+            if t_win[i] < t_lo:
+                continue
+            if vdiff[i] < v_hi <= vdiff[i + 1]:
+                frac = (v_hi - vdiff[i]) / (vdiff[i + 1] - vdiff[i])
+                t_hi = t_win[i] + frac * (t_win[i + 1] - t_win[i])
+                break
+
+        if t_hi is None:
+            continue
+
+        tau = (t_hi - t_lo) / np.log(v_hi / v_lo)
+        if tau > 0:
+            tau_list.append(tau)
+
+    if not tau_list:
+        return float("nan")
+    return float(np.mean(tau_list)) * 1e12   # → ps
 
 
 def _compute_tcmp_from_outp(time_arr, outp_arr, ncyc):
@@ -255,21 +321,30 @@ def _run_wave(vin_mv, dut_include):
     _, outn  = _load("outn")
     _, ivdd  = _load("ivdd")
 
+    tau_ps = float("nan")
+    if t is not None and vlp is not None and vln is not None:
+        ncyc_wave = max(1, int(round(WAVE_TSTOP / TCLK)))
+        tau_ps = _compute_tau_from_latch(t, vlp, vln, ncyc_wave)
+        if not np.isnan(tau_ps):
+            print(f"  [{tag}] τ = {tau_ps:.1f} ps", flush=True)
+
     return {
         "type": "wave", "vin_mv": vin_mv, "rc": rc, "elapsed": elapsed,
         "time": t, "clk": clk, "inp": inp, "inn": inn,
         "vxp": vxp, "vxn": vxn, "vlp": vlp, "vln": vln,
         "outp": outp, "outn": outn, "ivdd": ivdd,
+        "tau_ps": tau_ps,
     }
 
 
-def _run_sweep_point(vin_mv, dut_include):
+def _run_noise_point(vin_mv, dut_include, measure_power=False, measure_tcmp=False):
     """
-    One sweep point: simulate SWEEP_NCYC cycles at a fixed Vin level, count P(1).
-    When vin_mv == 0, also saves i(vvdd) to a fixed log file for power extraction
-    (overwritten each run — only one file, no accumulation).
+    Run SWEEP_NCYC cycles at a fixed Vin level.
+    - vin_mv == VIN_FIXED_MV : extract sigma via probit
+    - measure_power=True      : also save i(vvdd) for power
+    - measure_tcmp=True       : measure CLK→OUTP crossing time
     """
-    tag  = f"sweep_vin{vin_mv:+.2f}mv"
+    tag  = f"comp_vin{vin_mv:+.2f}mv"
     print(f"  [{tag}] starting ...", flush=True)
     t0   = time.perf_counter()
 
@@ -277,14 +352,12 @@ def _run_sweep_point(vin_mv, dut_include):
     log  = LOG_DIR / f"strongarm_{tag}.log"
     out  = LOG_DIR / f"strongarm_{tag}_outp.txt"
 
-    # Only measure power at Vin=0 (balanced input, most representative)
-    measure_power = (vin_mv == 0.0)
+    measure_power = measure_power or (vin_mv == 0.0)
+    ivdd_path = None
+    ivdd_cmd  = ""
     if measure_power:
-        ivdd_path = LOG_DIR / "strongarm_sweep_vin0_ivdd.txt"
+        ivdd_path = LOG_DIR / "strongarm_comp_vin0_ivdd.txt"
         ivdd_cmd  = f"wrdata {spath(ivdd_path)} i(vvdd)"
-    else:
-        ivdd_path = None
-        ivdd_cmd  = ""   # no-op line in netlist
 
     kw = dict(
         **_common_kw(dut_include),
@@ -312,26 +385,29 @@ def _run_sweep_point(vin_mv, dut_include):
     else:
         print(f"  [{tag}] WARNING: no usable data")
 
+    p1       = count_1 / SWEEP_NCYC
+    sigma_v  = sigma_from_p1(p1, abs(vin)) if vin_mv == VIN_FIXED_MV else float("nan")
+    sigma_uv = abs(sigma_v) * 1e6 if not np.isnan(sigma_v) else float("nan")
+
     p_avg_uw = float("nan")
     if measure_power and ivdd_path is not None and ivdd_path.exists():
         ivdd_raw = parse_wrdata(ivdd_path)
         if ivdd_raw is not None and len(ivdd_raw) > 100:
             p_avg_uw = VDD * np.mean(np.abs(ivdd_raw[:, 1])) * 1e6
 
-    # Tcmp measured at Vin=+1mV: average CLK→OUTP crossing over 1000 cycles
     tcmp_ps = float("nan")
-    if vin_mv == 1.0 and time_arr is not None:
+    if measure_tcmp and time_arr is not None:
         tcmp_ps = _compute_tcmp_from_outp(time_arr, outp_arr, SWEEP_NCYC)
         print(f"  [{tag}] Tcmp = {tcmp_ps:.1f} ps  (avg over {SWEEP_NCYC} cycles)", flush=True)
 
-    p1 = count_1 / SWEEP_NCYC
     print(f"  [{tag}] exit {rc}, {elapsed:.1f}s | "
-          f"Vin={vin_mv:+.2f}mV -> {count_1}/{SWEEP_NCYC} HIGH  "
-          f"P(1)={p1*100:.1f}%", flush=True)
+          f"Vin={vin_mv:+.2f}mV  P(1)={p1*100:.1f}%  "
+          f"sigma={sigma_uv:.0f}µV", flush=True)
 
     return {
-        "type": "sweep_pt", "vin_mv": vin_mv,
+        "type": "noise_pt", "vin_mv": vin_mv,
         "count_0": count_0, "count_1": count_1, "p1": p1,
+        "sigma_uv": sigma_uv,
         "p_avg_uw": p_avg_uw,
         "tcmp_ps": tcmp_ps,
         "rc": rc, "elapsed": elapsed,
@@ -399,16 +475,132 @@ def _run_ramp(dut_include):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Transfer curve fitting
+# FOM calculation
 # ─────────────────────────────────────────────────────────────────────────────
-def _gauss_cdf(vin, mu, sigma):
-    """Gaussian CDF: P(output=1 | Vin) = Phi((Vin - mu) / sigma)."""
-    return 0.5 * erfc(-(vin - mu) / (sigma * np.sqrt(2)))
-
-
-def fit_transfer_curve(sweep) -> dict:
+def compute_fom(results) -> dict:
     """
-    Fit P(1) vs Vin to a Gaussian CDF to extract:
+    Compute comparator performance metrics and FOM.
+    Noise is extracted via single-point probit from results["noise_pt"].
+    """
+    noise_pt = results["noise_pt"]
+    power_pt = results["power_pt"]
+    tcmp_pt  = results["tcmp_pt"]
+
+    sigma_uv = noise_pt["sigma_uv"]
+    p_avg_uw = power_pt["p_avg_uw"]
+    tcmp_ps  = tcmp_pt["tcmp_ps"]
+    tau_ps   = results.get("wave", {}).get("tau_ps", float("nan"))
+
+    FCLK_GHZ = FCLK / 1e9
+    fom1 = fom2 = float("nan")
+    if not any(np.isnan([sigma_uv, p_avg_uw])):
+        e_cycle_nj = p_avg_uw / FCLK_GHZ * 1e-6
+        fom1 = e_cycle_nj * (sigma_uv ** 2)
+    if not any(np.isnan([fom1, tcmp_ps])):
+        fom2 = fom1 * (tcmp_ps / 1e3)
+
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / "fom_report.txt"
+    p = results["params"]
+
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write("=" * 60 + "\n")
+        f.write("  StrongArm Comparator -- Performance Report\n")
+        f.write("=" * 60 + "\n\n")
+        f.write("Circuit parameters\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"  Technology   : {p['L_NM']}nm PTM HP\n")
+        f.write(f"  VDD          : {p['VDD']:.2f} V\n")
+        f.write(f"  VCM          : {p['VCM']:.2f} V\n")
+        f.write(f"  FCLK         : {p['FCLK']/1e9:.1f} GHz\n")
+        f.write(f"  Noise BW     : {p['NOISE_BW_GHZ']:.0f} GHz\n")
+        f.write(f"  Noise NA     : {p['NOISE_NA_UV']:.0f} uV per side\n")
+        for dev, wval in p["W"].items():
+            f.write(f"  W_{dev:<6}     : {wval:.1f} um\n")
+        f.write("\n")
+        f.write("Noise extraction (single-point probit)\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"  Vin_fixed    : {VIN_FIXED_MV} mV\n")
+        f.write(f"  Cycles       : {SWEEP_NCYC}\n")
+        f.write(f"  P(1)         : {noise_pt['p1']*100:.1f}%\n")
+        f.write(f"  sigma_n      : {sigma_uv:.1f} uV\n")
+        f.write("\n")
+        f.write("Performance metrics\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"  Avg power    : {p_avg_uw:.2f} uW   (Vin=0, {SWEEP_NCYC} cycles)\n")
+        f.write(f"  Tcmp         : {tcmp_ps:.1f} ps  (Vin=+1mV, {SWEEP_NCYC} cycles)\n")
+        f.write(f"  tau          : {tau_ps:.1f} ps  (latch regen, from waveform)\n")
+        f.write("\n")
+        f.write("Figure of Merit\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"  FOM1 = E_cycle x sigma_n^2       : {fom1:.4g} nJ*uV^2\n")
+        f.write(f"  FOM2 = FOM1 x Tcmp               : {fom2:.4g} nJ*uV^2*ns\n")
+        f.write("\n")
+        f.write("  Reference (45nm, 1GHz): FOM1 ~ 8-30 nJ*uV^2\n")
+        f.write(f"\nReport: {log_path}\n")
+
+    print(f"\n  FOM report -> {log_path}")
+    return dict(sigma_uv=sigma_uv, p_avg_uw=p_avg_uw, tcmp_ps=tcmp_ps,
+                tau_ps=tau_ps, fom1=fom1, fom2=fom2)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────────────────────────────────────
+def simulate_all():
+    """
+    Run all simulations in parallel:
+      waveform (5 cycles) + noise_pt + power_pt + tcmp_pt + ramp.
+
+    Returns
+    -------
+    dict with keys: 'wave', 'noise_pt', 'power_pt', 'tcmp_pt', 'ramp', 'params'
+    """
+    print("\n=== StrongArm Comparator Simulation (45nm, 1GHz) ===")
+    print(f"  Noise injection: NA={NOISE_NA*1e6:.0f}µV/side  "
+          f"BW={NOISE_BW/1e9:.0f}GHz  NT={NOISE_NT*1e12:.0f}ps")
+    print(f"  VDD={VDD}V  VCM={VCM}V  W_in={W['inp']}um  W_tail={W['tail']}um")
+    print(f"  Noise: probit at Vin={VIN_FIXED_MV}mV  |  "
+          f"Power: Vin=0mV  |  Tcmp: Vin=+1mV  |  {SWEEP_NCYC} cycles each\n")
+
+    dut_include, dut_tmp = _render_dut()
+
+    tasks = [
+        ("wave",     lambda: _run_wave(+1.0, dut_include)),
+        ("noise_pt", lambda: _run_noise_point(VIN_FIXED_MV, dut_include)),
+        ("power_pt", lambda: _run_noise_point(0.0,          dut_include, measure_power=True)),
+        ("tcmp_pt",  lambda: _run_noise_point(1.0,          dut_include, measure_tcmp=True)),
+        ("ramp",     lambda: _run_ramp(dut_include)),
+    ]
+
+    t_total = time.perf_counter()
+    try:
+        with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+            futures  = {name: pool.submit(fn) for name, fn in tasks}
+            results  = {name: f.result() for name, f in futures.items()}
+    finally:
+        if dut_tmp: os.unlink(dut_tmp)
+
+    wall = time.perf_counter() - t_total
+    print(f"\n  Total wall time: {wall:.1f}s ({len(tasks)} sims in parallel)")
+
+    return {
+        "wave":     results["wave"],
+        "noise_pt": results["noise_pt"],
+        "power_pt": results["power_pt"],
+        "tcmp_pt":  results["tcmp_pt"],
+        "ramp":     results["ramp"],
+        "params": {
+            "VDD": VDD, "VCM": VCM, "FCLK": FCLK,
+            "NOISE_BW_GHZ": NOISE_BW / 1e9,
+            "NOISE_NA_UV":  NOISE_NA * 1e6,
+            "SWEEP_NCYC":   SWEEP_NCYC,
+            "VIN_FIXED_MV": VIN_FIXED_MV,
+            "RAMP_NCYC":    RAMP_NCYC,
+            "L_NM": L_NM, "W": W,
+        },
+    }
+
       mu    — input offset voltage (CDF midpoint)
       sigma — input-referred noise RMS
 
@@ -502,6 +694,9 @@ def compute_fom(results) -> dict:
     if vin1 is not None and not np.isnan(vin1.get("tcmp_ps", float("nan"))):
         tcmp_ps = vin1["tcmp_ps"]
 
+    # ── τ from waveform simulation (VLP/VLN two-threshold crossing) ───────────
+    tau_ps = wave.get("tau_ps", float("nan")) if wave else float("nan")
+
     # ── FOM ───────────────────────────────────────────────────────────────────
     # Standard comparator FOM:
     #   E_cycle [nJ] = P_avg [µW] / FCLK [GHz] / 1e6
@@ -565,6 +760,8 @@ def compute_fom(results) -> dict:
                 f"(VDD x mean|i_VDD|, noise sweep Vin=0, 1000 cycles)\n")
         f.write(f"  Tcmp         : {tcmp_ps:.1f} ps  "
                 f"(avg CLK->OUTP, Vin=+1mV, {SWEEP_NCYC} cycles)\n")
+        f.write(f"  tau          : {tau_ps:.1f} ps  "
+                f"(latch regen, |VLN-VLP| crossing 0.05→0.40*VDD, waveform)\n")
         f.write("\n")
 
         f.write("Figure of Merit\n")
@@ -582,6 +779,7 @@ def compute_fom(results) -> dict:
         mu_uv    = mu_uv,
         p_avg_uw = p_avg_uw,
         tcmp_ps  = tcmp_ps,
+        tau_ps   = tau_ps,
         fom1     = fom1,
         fom2     = fom2,
         fit      = fit,
@@ -624,7 +822,7 @@ def simulate_all():
             futures = {name: pool.submit(fn) for name, fn in tasks}
             results = {name: f.result() for name, f in futures.items()}
     finally:
-        os.unlink(dut_tmp)
+        if dut_tmp: os.unlink(dut_tmp)
 
     wall = time.perf_counter() - t_total
     print(f"\n  Total wall time: {wall:.1f}s ({len(tasks)} sims in parallel)")

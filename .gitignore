@@ -2,6 +2,14 @@ references/
 
 .claude/
 
-comparator/assets/logs
+comparator/assets/logs/
 comparator/assets/__pycache__/
-comparator/assets/plots
+comparator/assets/plots/
+
+# Generated outputs
+WORK/
+netlists/
+__pycache__/
+*.pyc
+
+reference

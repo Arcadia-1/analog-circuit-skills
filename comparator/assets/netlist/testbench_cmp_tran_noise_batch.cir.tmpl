@@ -1,0 +1,31 @@
+* StrongArm Comparator — Batched Vin Sweep  VCM={vcm:.6f}V
+* VDD={VDD}V, CLK=1GHz, NT={noise_nt_ps:.0f}ps, {n_vin} Vin points
+* One ngspice call runs all Vin values sequentially — amortises startup cost.
+
+* ── Supply and clock ──────────────────────────────────────────────────────────
+VVDD VDD 0 DC {VDD}
+VCLK CLK 0 PULSE(0 {VDD} 0 10p 10p 500p 1n)
+
+* ── Input stimulus (altered per Vin point in .control) ────────────────────────
+VINP_DC INP_DC 0 DC 0
+VINN_DC INN_DC 0 DC 0
+
+* Input-referred noise
+VN_P INP INP_DC trnoise({noise_na} {noise_nt} 0 0)
+VN_N INN INN_DC trnoise({noise_na} {noise_nt} 0 0)
+
+* ── DUT ───────────────────────────────────────────────────────────────────────
+{dut_include}
+
+X1 INP INN CLK VDD OUTP OUTN comparator_strongarm
+
+* ── Initial conditions (reset state) ─────────────────────────────────────────
+.ic V(x1.vxp)={VDD} V(x1.vxn)={VDD} V(x1.vlp)={VDD} V(x1.vln)={VDD} V(x1.vs)=0
+
+.include {model_path}
+
+.control
+{sweep_cmds}
+.endc
+
+.end

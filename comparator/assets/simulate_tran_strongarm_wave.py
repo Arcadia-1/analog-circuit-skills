@@ -20,6 +20,7 @@ from ngspice_common import LOG_DIR, parse_wrdata, spath
 from comparator_common import (
     VDD, VCM, TCLK,
     circuit_params, render_dut, common_kw, run_netlist,
+    compute_tau_from_latch,
 )
 
 WAVE_VIN_MV = 1.0          # mV  overdrive for waveform
@@ -35,7 +36,7 @@ def simulate_wave() -> dict:
     try:
         wave = _run_wave(WAVE_VIN_MV, dut_include)
     finally:
-        os.unlink(dut_tmp)
+        if dut_tmp: os.unlink(dut_tmp)
 
     return {
         "wave":   wave,
@@ -81,9 +82,16 @@ def _run_wave(vin_mv, dut_include):
     _,   outp = _load("outp")
     _,   outn = _load("outn")
 
+    tau_ps = float("nan")
+    if t is not None and vlp is not None and vln is not None:
+        tau_ps = compute_tau_from_latch(t, vlp, vln, WAVE_NCYC)
+        if not np.isnan(tau_ps):
+            print(f"  [{tag}] τ = {tau_ps:.1f} ps", flush=True)
+
     return {
         "vin_mv": vin_mv, "rc": rc, "elapsed": elapsed,
         "time": t, "clk": clk, "inp": inp, "inn": inn,
         "vxp": vxp, "vxn": vxn, "vlp": vlp, "vln": vln,
         "outp": outp, "outn": outn,
+        "tau_ps": tau_ps,
     }
