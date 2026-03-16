@@ -1,0 +1,51 @@
+* Bootstrap Switch — DUT subcircuit
+* 180nm PTM, parameterised W/L/CB
+*
+* Ports: VIN CLKS VDD VOUT
+*   VIN  — analog input
+*   CLKS — sampling clock (HIGH = sample, LOW = reset)
+*   VDD  — supply
+*   VOUT — sampled output (connect to sampling capacitor)
+
+.subckt bootstrap_switch VIN CLKS VDD VOUT
+
+* ── Inverter (CLKS → CLKSB) ────────────────────────────────────────────────
+MP_INV CLKSB CLKS VDD  VDD  pmos W={W_inv_p}u L={L}
+MN_INV CLKSB CLKS 0    0    nmos W={W_inv_n}u L={L}
+
+* ── Sampling switch ────────────────────────────────────────────────────────
+MS     VOUT  VGATE VIN  0    nmos W={W_sw}u L={L}
+
+* ── Bootstrap capacitor ────────────────────────────────────────────────────
+CB     CB_TOP CB_BOT {CB}
+
+* ── Reset switches ─────────────────────────────────────────────────────────
+* M1: PMOS, charges CB top plate to VDD during reset (VGATE=0 → M1 ON)
+M1     CB_TOP VGATE VDD  CB_TOP pmos W={W_m1}u L={L}
+
+* M2: NMOS, discharges CB bottom plate to GND during reset
+M2     CB_BOT CLKSB 0    0    nmos W={W_m2}u L={L}
+
+* ── VGATE pull-down (reset) ────────────────────────────────────────────────
+* M5A+M5 cascode: pulls VGATE to ~VDD-Vth during reset, protects M5 from Vds>VDD
+M5A    VGATE  VDD   NET_5A  0    nmos W={W_m5a}u L={L}
+M5     NET_5A CLKSB  0      0    nmos W={W_m5}u  L={L}
+
+* ── Top-plate conduction (sampling) ────────────────────────────────────────
+* M4: PMOS, connects CB top plate to VGATE during sampling
+M4     VGATE  NET_G4 CB_TOP CB_TOP pmos W={W_m4}u L={L}
+
+* M4A: NMOS, connects VIN to M4 gate during sampling (via VGATE)
+M4A    NET_G4 VGATE  VIN    0    nmos W={W_m4a}u L={L}
+
+* M4B: PMOS, pre-charges M4 gate to VDD during reset
+M4B    NET_G4 CLKS   VDD    VDD  pmos W={W_m4b}u L={L}
+
+* M4C: NMOS, startup — pulls M4 gate low when CLKS rises
+M4C    NET_G4 CLKS   CB_BOT 0    nmos W={W_m4c}u L={L}
+
+* ── VIN-to-CB bottom (sampling) ────────────────────────────────────────────
+* M3: NMOS, connects VIN to CB bottom during sampling (gate=VGATE=VIN+VDD)
+M3     CB_BOT VGATE  VIN    0    nmos W={W_m3}u L={L}
+
+.ends bootstrap_switch

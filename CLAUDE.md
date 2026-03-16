@@ -18,7 +18,7 @@ python run_tran_strongarm_noise.py     # Noise extraction + FOM
 python run_tran_strongarm_ramp.py      # Ramp response only
 ```
 
-All outputs go to `WORK/` at repo root (logs → `WORK/logs/`, plots → `WORK/plots/`). Override with `ANALOG_WORK_DIR` env var.
+All outputs go to `.work_comparator/` at repo root (logs → `.work_comparator/logs/`, plots → `.work_comparator/plots/`). Override with `ANALOG_WORK_DIR` env var.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ ngspice `wrdata` → 2-column text files (time, value) → `parse_wrdata()` → 
 
 ## Key Conventions
 
-- **All outputs to `WORK/`**, never inside the skill package.
+- **Skill-specific output directories**: comparator → `.work_comparator/`, bootstrap_switch → `.work_bootstrap/`. Never write inside the skill package.
 - **Matplotlib `Agg` backend always** — never pop up figures. Always `plt.close(fig)` after `savefig()`.
 - **Forward slashes in paths** for ngspice compatibility (`spath()` helper).
 - **Parallel execution** via `ThreadPoolExecutor` for independent simulations.

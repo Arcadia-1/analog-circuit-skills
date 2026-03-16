@@ -1,0 +1,36 @@
+* Bootstrap Switch — Transient Waveform Testbench
+* 180nm PTM, VDD={VDD}V, FCLK={fclk_mhz:.0f}MHz
+* Shows: CLK, VIN (sine), VGATE, VSAMPLED, VGATE-VIN (bootstrap voltage)
+
+* ── Supply ──────────────────────────────────────────────────────────────────
+VVDD VDD 0 DC {VDD}
+
+* ── Clock ───────────────────────────────────────────────────────────────────
+VCLK CLKS 0 PULSE(0 {VDD} 0 100p 100p {t_high} {tclk})
+
+* ── Input signal (sine, full swing) ────────────────────────────────────────
+VIN  VIN 0 SIN({vcm} {vamp} {fin} 0 0)
+
+* ── DUT ─────────────────────────────────────────────────────────────────────
+{dut_include}
+
+X1 VIN CLKS VDD VSAMPLED bootstrap_switch
+
+* ── Sampling capacitor ──────────────────────────────────────────────────────
+CS VSAMPLED 0 {CS}
+
+* ── Model ───────────────────────────────────────────────────────────────────
+.include {model_path}
+
+* ── Simulation ──────────────────────────────────────────────────────────────
+.control
+tran {tstep} {tstop} 0 {tstep}
+wrdata {out_clk}      v(clks)
+wrdata {out_vin}      v(vin)
+wrdata {out_vgate}    v(x1.vgate)
+wrdata {out_vsampled} v(vsampled)
+wrdata {out_cbtop}    v(x1.cb_top)
+wrdata {out_cbbot}    v(x1.cb_bot)
+.endc
+
+.end

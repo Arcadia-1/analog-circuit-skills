@@ -1,0 +1,51 @@
+* Bootstrap Switch — Ron vs Vin (gds-based measurement)
+* Saves transistor gds directly — Ron = 1/gds during sampling phase
+* Technology: {node_name}, VDD={VDD}V, CLK={fclk_mhz:.0f}MHz
+
+* ── Supply ──────────────────────────────────────────────────────────────────
+VVDD VDD 0 DC {VDD}
+
+* ── Clock ───────────────────────────────────────────────────────────────────
+VCLK CLKS 0 PULSE(0 {VDD} 0 100p 100p {t_high} {tclk})
+
+* ── Input: slow ramp 0.02*VDD → 0.98*VDD ───────────────────────────────────
+VIN VIN 0 PWL(0 {vin_lo} {tstop} {vin_hi})
+
+* ── Model ───────────────────────────────────────────────────────────────────
+.include {model_path}
+
+* ── DUT (bootstrap switch) ──────────────────────────────────────────────────
+{dut_include}
+
+* ── 1. Plain NMOS switch (gate=VDD) ────────────────────────────────────────
+MN_SW  VOUTN VDD VIN 0   nmos W={W_sw}u L={L}
+CSN    VOUTN 0 {CS}
+
+* ── 2. Plain PMOS switch (gate=GND) ────────────────────────────────────────
+MP_SW  VOUTP 0   VIN VDD pmos W={W_sw}u L={L}
+CSP    VOUTP 0 {CS}
+
+* ── 3. CMOS switch ──────────────────────────────────────────────────────────
+MN_C   VOUTC VDD VIN 0   nmos W={W_sw}u L={L}
+MP_C   VOUTC 0   VIN VDD pmos W={W_sw}u L={L}
+CSC    VOUTC 0 {CS}
+
+* ── 4. Bootstrap switch ─────────────────────────────────────────────────────
+X1     VIN CLKS VDD VOUTB bootstrap_switch
+CSB    VOUTB 0 {CS}
+
+* Save node voltages + device gds for Ron = 1/gds extraction
+.save v(vin) v(clks) @mn_sw[gds] @mp_sw[gds] @mn_c[gds] @mp_c[gds] @m.x1.ms[gds]
+
+.control
+tran {tstep} {tstop} 0 {tstep}
+wrdata {out_vin}      v(vin)
+wrdata {out_clk}      v(clks)
+wrdata {out_gds_n}    @mn_sw[gds]
+wrdata {out_gds_p}    @mp_sw[gds]
+wrdata {out_gds_cn}   @mn_c[gds]
+wrdata {out_gds_cp}   @mp_c[gds]
+wrdata {out_gds_bts}  @m.x1.ms[gds]
+.endc
+
+.end

@@ -29,7 +29,7 @@ MODEL_DIR   = _ASSET_DIR / 'models'
 import os as _os
 _REPO_ROOT = BASE_DIR.parent.parent                  # .../analog-circuit-skills/
 _WORK_ROOT = Path(_os.environ.get("ANALOG_WORK_DIR",
-                                   str(_REPO_ROOT / "WORK")))
+                                   str(_REPO_ROOT / ".work_comparator")))
 LOG_DIR  = _WORK_ROOT / "logs"
 PLOT_DIR = _WORK_ROOT / "plots"
 NETLIST_SAVE_DIR = _WORK_ROOT / "netlists"

@@ -7,8 +7,8 @@ comparator/assets/__pycache__/
 comparator/assets/plots/
 
 # Generated outputs
-WORK/
-netlists/
+.work_bootstrap/
+.work_comparator/
 __pycache__/
 *.pyc
 
