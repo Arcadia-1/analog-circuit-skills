@@ -5,86 +5,6 @@
 ![ngspice](https://img.shields.io/badge/ngspice-required-orange?style=flat-square)
 ![PTM](https://img.shields.io/badge/PTM-180nm%20%7C%2045nm%20%7C%2022nm-green?style=flat-square)
 
-**EN** | [中文](#中文说明)
-
-A collection of analog circuit simulation skills for AI agents, built on **ngspice + Python**.
-Each skill covers theory, step-by-step circuit construction, simulation, and transistor sizing.
-
-> **If you are human**: The plots below give a quick visual overview of each skill's outputs.
-
-> **If you are an AI Agent**: Skip the images. Full instructions are in each skill's `SKILL.md`. Runnable scripts and model files are in `assets/`.
-
----
-
-## Skills
-
-| Skill | Technology | VDD | Topic |
-|-------|-----------|-----|-------|
-| [comparator](comparator/) | 45nm PTM HP | 1.0 V | StrongArm dynamic comparator |
-| [bootstrap_switch](bootstrap_switch/) | 180 / 45 / 22nm PTM | 1.8 / 1.0 / 0.8 V | Bootstrapped sampling switch |
-| LDO | — | — | Low-dropout regulator *(in development)* |
-
----
-
-## Bootstrap Switch
-
-Bootstrapped NMOS sampling switch for high-linearity ADC front-ends.
-The bootstrap mechanism keeps Vgs = VDD constant across the full input range,
-giving a signal-independent on-resistance — essential for >8-bit sampling.
-
-**Waveform** — VGATE tracks VIN + VDD during every sampling phase:
-
-![Bootstrap Switch Waveform](bts_waveform.png)
-
-**On-resistance comparison** across 180 nm / 45 nm HP / 22 nm HP:
-
-![Ron Comparison Multinode](bts_ron_multinode.png)
-
-Key observations:
-- **NMOS**: Ron explodes near VDD (Vgs → Vth) — unusable for full-swing input
-- **PMOS**: Ron explodes near GND — complementary problem
-- **CMOS**: better coverage but still varies with VIN; sensitive to PVT mismatch
-- **Bootstrap**: nearly flat Ron across the full input range at all technology nodes
-
----
-
-## StrongArm Comparator
-
-Dynamic regenerative comparator for high-speed SAR ADC decision circuits.
-Shows integration phase (VXP/VXN), latch regeneration (VLP/VLN), and digital output.
-
-![StrongArm Comparator Waveform](strongarm_waveform.png)
-
----
-
-## Running
-
-```bash
-# Bootstrap switch (all simulations)
-cd bootstrap_switch/assets
-python run_tran_bts.py
-
-# StrongArm comparator
-cd comparator/assets
-python run_tran_strongarm_comp.py
-```
-
-All outputs (logs, plots) go to skill-specific directories: `.work_bootstrap/` or `.work_comparator/`.
-
----
-
-## Dependencies
-
-- [ngspice](https://ngspice.sourceforge.io/) — circuit simulator (must be on PATH)
-- Python 3 + `numpy`, `matplotlib`, `scipy`
-- Installed skills at `.claude/skills/`: `ngspice`, `gmoverid`, `transistor-models`
-
----
-
----
-
-## 中文说明
-
 一个面向 AI Agent 的模拟电路仿真技能合集，基于 **ngspice + Python**。
 每个技能涵盖理论验证、电路搭建、仿真和晶体管尺寸设计。
 
@@ -105,15 +25,10 @@ All outputs (logs, plots) go to skill-specific directories: `.work_bootstrap/` o
 
 ![自举开关波形](bts_waveform.png)
 
-**导通阻抗对比** — 180nm / 45nm HP / 22nm HP 三个工艺节点：
-
-![Ron 多节点对比](bts_ron_multinode.png)
-
-关键结论：
-- **NMOS**：Ron 在 VIN 接近 VDD 时急剧增大（Vgs → Vth）
-- **PMOS**：Ron 在 VIN 接近 GND 时急剧增大，与 NMOS 互补
-- **CMOS**：全范围可导通，但 Ron 仍随 VIN 变化，对 PVT 失配敏感
-- **自举**：在全部三个工艺节点上，Ron 在整个输入范围内近乎平坦
+关键特性：
+- **自举机制**：使用 1pF 引导电容（CB）将采样晶体管的栅极电压提升至 VIN + VDD
+- **恒定导通电阻**：Vgs = VDD 保持常数，不受输入信号影响
+- **多工艺支持**：在 180nm / 45nm / 22nm 工艺节点上验证
 
 ## StrongArm 比较器
 
@@ -141,3 +56,22 @@ python run_tran_strongarm_comp.py
 - [ngspice](https://ngspice.sourceforge.io/) — 电路仿真器（需在 PATH 中）
 - Python 3 + `numpy`、`matplotlib`、`scipy`
 - 已安装技能：`.claude/skills/` 下的 `ngspice`、`gmoverid`、`transistor-models`
+
+## 文件结构
+
+```
+analog-circuit-skills/
+├── comparator/              # StrongArm 比较器技能
+│   ├── SKILL.md            # 详细文档
+│   └── assets/             # 网表模板 + Python 脚本
+├── bootstrap_switch/        # 自举采样开关技能
+│   ├── SKILL.md            # 详细文档
+│   └── assets/             # 网表模板 + Python 脚本
+├── .work_comparator/       # 比较器临时输出目录
+├── .work_bootstrap/        # 自举开关临时输出目录
+└── README.md               # 本文件
+```
+
+## 技能详情
+
+完整的理论、电路设计、仿真方法说明请参见各技能目录下的 `SKILL.md`。
