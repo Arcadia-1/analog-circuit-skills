@@ -1,0 +1,35 @@
+* LDO Noise Testbench
+* Technology: PTM 180nm, VIN={vin_dc}V, VREF={vref_dc}V
+* Measures output-referred noise spectral density via ngspice .noise analysis.
+*   onoise_spectrum : output noise amplitude density [V/sqrt(Hz)]  (V+ = vout, V- = vss)
+*
+* Note: ngspice 43+ returns onoise_spectrum already in V/sqrt(Hz), NOT V^2/Hz.
+
+* ── DC Sources ───────────────────────────────────────────────────────────────
+* V1 is the noise reference source (required by .noise command)
+V1       vin  0  DC {vin_dc}  AC 1
+VREF_SRC vref 0  DC {vref_dc}
+VVSS     vss  0  DC 0
+
+* ── Load ─────────────────────────────────────────────────────────────────────
+R_load  vout vss  {r_load}
+
+* ── DUT ──────────────────────────────────────────────────────────────────────
+{dut_include}
+X1 vin vout vss vref ldo_18_3
+
+.include {model_path}
+.options RELTOL=1e-4 ABSTOL=1e-12 VNTOL=1e-7 ITL4=50
+
+* ── Noise Analysis ───────────────────────────────────────────────────────────
+* V(vout, vss): differential output noise (positive=vout, negative=vss)
+* V1 is required as a reference source by ngspice .noise syntax only;
+* it does not affect onoise_spectrum (total output noise from all sources).
+.control
+noise V(vout, vss) V1 dec {noise_pts} {fstart} {fstop}
+setplot noise1
+wrdata {out_noise_freq}   frequency
+wrdata {out_onoise}       onoise_spectrum
+.endc
+
+.end

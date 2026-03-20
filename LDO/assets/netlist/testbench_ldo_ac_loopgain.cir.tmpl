@@ -1,0 +1,78 @@
+* LDO AC Testbench — Loop Gain (Flat Netlist, Loop Broken at M1 Gate)
+* Technology: PTM 180nm, VIN={vin_dc}V, VREF={vref_dc}V
+*
+* Loop break point: between feedback divider output (net30) and M1 gate (net2).
+* Vtest (AC=1) is in series at the break.
+* Loop gain T = V(net30)/Vtest = V(net30) [since |Vtest|=1]
+*   |T(jω)| dB  → from vdb(net30) [expect large negative at DC because T<0]
+*   Phase margin = 180° + angle(T) at |T|=0dB
+*   Equivalently, plot vdb(net30) and (vp(net30)+180) for conventional display.
+*
+* Gain/phase margin interpretation:
+*   - GBW: frequency where |T|=0dB
+*   - Phase margin: (vp(net30) + 180) evaluated at GBW frequency
+*   - Gain margin: -|T|_dB evaluated where phase(T)+180 = 0
+
+* ── DC Sources ───────────────────────────────────────────────────────────────
+VIN_SRC  vin  0  DC {vin_dc}
+VREF_SRC vref 0  DC {vref_dc}
+VVSS     vss  0  DC 0
+
+* ── BIAS ─────────────────────────────────────────────────────────────────────
+I1  vin ibias  DC {ibias_ua}u
+C1  ibias vss  {c_ibias}
+
+* ── Current mirror ───────────────────────────────────────────────────────────
+M6 ibias ibias vss vss NMOS L={l_m6} W={w_m6} m={m_m6}
++ ad={ad_m6} as={as_m6} pd={pd_m6} ps={ps_m6} nrd={nrd_m6} nrs={nrs_m6}
+M5 net16 ibias vss vss NMOS L={l_m5} W={w_m5} m={m_m5}
++ ad={ad_m5} as={as_m5} pd={pd_m5} ps={ps_m5} nrd={nrd_m5} nrs={nrs_m5}
+
+* ── Differential amp ─────────────────────────────────────────────────────────
+* M0: non-inv input (VREF fixed)
+* M1: inv input is net2 (BROKEN from net30 — Vtest inserted in series)
+M0 net3 vref  net16 vss NMOS L={l_m0} W={w_m0} m={m_m0}
++ ad={ad_m0} as={as_m0} pd={pd_m0} ps={ps_m0} nrd={nrd_m0} nrs={nrs_m0}
+M1 net4 net2  net16 vss NMOS L={l_m1} W={w_m1} m={m_m1}
++ ad={ad_m1} as={as_m1} pd={pd_m1} ps={ps_m1} nrd={nrd_m1} nrs={nrs_m1}
+
+* ── Active load ──────────────────────────────────────────────────────────────
+M4 net4 net4 vin vin PMOS L={l_m4} W={w_m4} m={m_m4}
++ ad={ad_m4} as={as_m4} pd={pd_m4} ps={ps_m4} nrd={nrd_m4} nrs={nrs_m4}
+M3 net3 net4 vin vin PMOS L={l_m3} W={w_m3} m={m_m3}
++ ad={ad_m3} as={as_m3} pd={pd_m3} ps={ps_m3} nrd={nrd_m3} nrs={nrs_m3}
+
+* ── Pass transistor ──────────────────────────────────────────────────────────
+M2 vout net3 vin vin PMOS L={l_m2} W={w_m2} m={m_m2}
++ ad={ad_m2} as={as_m2} pd={pd_m2} ps={ps_m2} nrd={nrd_m2} nrs={nrs_m2}
+
+* ── Compensation ─────────────────────────────────────────────────────────────
+R2  net3 net34  {r_comp}
+C0  net34 vout  {c_comp}
+
+* ── Feedback divider ─────────────────────────────────────────────────────────
+R0  vout  net30  {r_fb_top}
+R1  net30 vss    {r_fb_bot}
+
+* ── LOOP BREAK: inject Vtest in series at M1 gate ────────────────────────────
+* net2 = M1 gate (sees injected signal + return)
+* net30 = feedback divider output (the return signal)
+* DC=0 maintains identical bias as closed-loop; AC=1 is the injection
+Vtest  net2 net30  DC 0  AC 1
+
+* ── Load ─────────────────────────────────────────────────────────────────────
+R_load  vout vss  {r_load}
+C2      vout vss  {c_out}
+
+.include {model_path}
+.options RELTOL=1e-4 ABSTOL=1e-12 VNTOL=1e-7 ITL4=50
+
+* ── AC Analysis ──────────────────────────────────────────────────────────────
+.control
+ac dec {ac_pts} {fstart} {fstop}
+wrdata {out_lg_freq}    frequency
+wrdata {out_lg_mag}     vdb(net30)
+wrdata {out_lg_phase}   vp(net30)
+.endc
+
+.end
