@@ -1,0 +1,72 @@
+* LDO — DUT Subcircuit (ldo_18_3)
+* Technology: PTM 180nm (NMOS / PMOS, BSIM3v3 Level 8)
+* Target: VIN={vin_dc}V, VOUT=1.8V, VREF={vref_dc}V
+*
+* Ports: VIN  — input supply
+*        VOUT — regulated output
+*        VSS  — ground
+*        VREF — reference voltage (0.9V nominal)
+*
+* Internal topology:
+*   Bias: I1 → M6 (diode-conn) → M5 (10x mirror) → tail for diff amp
+*   Error amp: M0 (non-inv, VREF) / M1 (inv, feedback) / M3-M4 (PMOS active load)
+*   Pass transistor: M2 (large PMOS, gate=net3)
+*   Compensation: R2 + C0 zero from net3 to VOUT
+*   Feedback divider: R0 (top) + R1 (bot) → V_fb = VOUT * R1/(R0+R1) = VREF at DC
+*   Bypass: C1 on ibias node, C2 on VOUT
+*
+* Transistor sizes are parameterized — see ldo_common.py globals W_Mxx_UM / M_Mxx.
+
+.subckt ldo_18_3 VIN VOUT VSS VREF
+
+* ── Bias current source ──────────────────────────────────────────────────────
+* Generates IBIAS_UA from VIN into ibias node
+I1 VIN ibias DC {ibias_ua}u
+
+* ── Bias bypass cap ──────────────────────────────────────────────────────────
+C1 ibias VSS {c_ibias}
+
+* ── Current mirror (NMOS) ────────────────────────────────────────────────────
+* M6: diode-connected reference (1x)
+* M5: Nx mirror → provides differential-pair tail current
+M6 ibias ibias VSS VSS NMOS L={l_m6} W={w_m6} m={m_m6}
++ ad={ad_m6} as={as_m6} pd={pd_m6} ps={ps_m6} nrd={nrd_m6} nrs={nrs_m6}
+M5 net16 ibias VSS VSS NMOS L={l_m5} W={w_m5} m={m_m5}
++ ad={ad_m5} as={as_m5} pd={pd_m5} ps={ps_m5} nrd={nrd_m5} nrs={nrs_m5}
+
+* ── Differential amplifier (error amp) ──────────────────────────────────────
+* M0: non-inverting input (VREF)
+* M1: inverting input (feedback node net30)
+M0 net3 VREF net16 VSS NMOS L={l_m0} W={w_m0} m={m_m0}
++ ad={ad_m0} as={as_m0} pd={pd_m0} ps={ps_m0} nrd={nrd_m0} nrs={nrs_m0}
+M1 net4 net30 net16 VSS NMOS L={l_m1} W={w_m1} m={m_m1}
++ ad={ad_m1} as={as_m1} pd={pd_m1} ps={ps_m1} nrd={nrd_m1} nrs={nrs_m1}
+
+* ── PMOS active load (current mirror) ───────────────────────────────────────
+* M4: diode-connected (for M1 side, sets mirror current)
+* M3: mirrors M4 current to M0 side (net3 = error amp output)
+M4 net4 net4 VIN VIN PMOS L={l_m4} W={w_m4} m={m_m4}
++ ad={ad_m4} as={as_m4} pd={pd_m4} ps={ps_m4} nrd={nrd_m4} nrs={nrs_m4}
+M3 net3 net4 VIN VIN PMOS L={l_m3} W={w_m3} m={m_m3}
++ ad={ad_m3} as={as_m3} pd={pd_m3} ps={ps_m3} nrd={nrd_m3} nrs={nrs_m3}
+
+* ── Pass transistor (large PMOS) ────────────────────────────────────────────
+* Gate = net3 (error amp output)
+M2 VOUT net3 VIN VIN PMOS L={l_m2} W={w_m2} m={m_m2}
++ ad={ad_m2} as={as_m2} pd={pd_m2} ps={ps_m2} nrd={nrd_m2} nrs={nrs_m2}
+
+* ── Compensation zero: R2 + C0 ───────────────────────────────────────────────
+* fz = 1/(2pi*R2*C0) — adds phase lead to improve PM
+R2 net3 net34 {r_comp}
+C0 net34 VOUT {c_comp}
+
+* ── Feedback voltage divider ─────────────────────────────────────────────────
+* V_fb(net30) = VOUT * R1/(R0+R1)
+* At regulation: V_fb = VREF → VOUT = VREF * (R0+R1)/R1
+R0 VOUT net30 {r_fb_top}
+R1 net30 VSS  {r_fb_bot}
+
+* ── Output decoupling capacitor ──────────────────────────────────────────────
+C2 VOUT VSS {c_out}
+
+.ends ldo_18_3
