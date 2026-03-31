@@ -1,0 +1,38 @@
+* LDO Transient Testbench — Load Step Response
+* Technology: PTM 180nm, VIN={vin_dc}V, VREF={vref_dc}V
+*
+* Load model: R_idle (always-on light load) + ILOAD (pulsed current step)
+*   R_idle  = {r_idle} Ω   (idle/light load, ~1 mA at 1.8 V)
+*   ILOAD   = 0 → {iload_step} A  step, starting at t = {t_pre} s
+*
+* Note: No 'uic' — ngspice computes DC operating point first so VOUT
+*       starts regulated at 1.8 V, and the transient starts cleanly.
+
+* ── DC Sources ───────────────────────────────────────────────────────────────
+V1       vin  0  DC {vin_dc}
+VREF_SRC vref 0  DC {vref_dc}
+VVSS     vss  0  DC 0
+
+* ── Idle (light) load ────────────────────────────────────────────────────────
+R_idle  vout vss  {r_idle}
+
+* ── Pulsed current load (load step) ─────────────────────────────────────────
+* PULSE( I_init  I_pulse  delay  rise  fall  pw  period )
+* Positive current sinks from vout to vss (conventional SPICE direction).
+ILOAD   vout vss  PULSE(0 {iload_step} {t_pre} {trise} {tfall} {t_step_on} {t_period})
+
+* ── DUT ──────────────────────────────────────────────────────────────────────
+{dut_include}
+X1 vin vout vss vref ldo_18_3
+
+.include {model_path}
+.options RELTOL=1e-4 ABSTOL=1e-12 VNTOL=1e-7 ITL4=50
+
+* ── Transient Analysis ───────────────────────────────────────────────────────
+.control
+tran {tstep} {tstop}
+wrdata {out_vout}  v(vout)
+wrdata {out_vin}   v(vin)
+.endc
+
+.end

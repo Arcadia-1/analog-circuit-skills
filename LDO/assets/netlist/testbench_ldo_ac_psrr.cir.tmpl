@@ -1,0 +1,45 @@
+* LDO AC Testbench — PSRR and Output Impedance
+* VIN={vin_dc}V  VREF={vref_dc}V  R_load={r_load}Ω
+* PSRR:  AC=1V on supply → PSRR(dB) = -vdb(vout)
+* Zout:  AC=1A into vout → Zout = v(vout)/I_test
+
+* ── Supply: DC bias + AC test ────────────────────────────────────────────────
+* For PSRR: AC=1 on VIN
+V1  vin  0  DC {vin_dc}  AC 1
+VREF_SRC vref 0  DC {vref_dc}
+VVSS vss  0  DC 0
+
+* ── Default load ─────────────────────────────────────────────────────────────
+R_load  vout vss {r_load}
+
+* ── Output AC test current (for Zout) ────────────────────────────────────────
+* Starts at AC=0 (inactive during PSRR run); enabled via alter for Zout run.
+I_test  vout vss  AC 0  DC 0
+
+* ── DUT ─────────────────────────────────────────────────────────────────────
+{dut_include}
+X1 vin vout vss vref ldo_18_3
+
+.include {model_path}
+.options RELTOL=1e-4 ABSTOL=1e-12 VNTOL=1e-7 ITL4=50
+
+* ── AC Analysis ──────────────────────────────────────────────────────────────
+.control
+
+* --- PSRR: inject AC at VIN (I_test already AC=0), measure Vout ---
+ac dec {ac_pts} {fstart} {fstop}
+wrdata {out_psrr_freq}   frequency
+wrdata {out_psrr_mag}    vdb(vout)
+wrdata {out_psrr_phase}  vp(vout)
+
+* --- Zout: inject AC 1A at vout, VIN AC=0 ---
+alter V1 ac=0
+alter I_test ac=1
+ac dec {ac_pts} {fstart} {fstop}
+wrdata {out_zout_freq}   frequency
+wrdata {out_zout_mag}    vdb(vout)
+wrdata {out_zout_phase}  vp(vout)
+
+.endc
+
+.end

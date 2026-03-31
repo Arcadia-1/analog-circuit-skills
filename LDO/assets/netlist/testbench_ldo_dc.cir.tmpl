@@ -1,0 +1,50 @@
+* LDO DC Testbench
+* Runs two sweeps via .control:
+*   1) Line regulation: VIN swept from {vin_min}V to {vin_max}V
+*   2) Load regulation: I_load swept from 0 to {iload_max}A
+* Nominal: VIN={vin_dc}V, VREF={vref_dc}V, R_load={r_load}Ω
+
+* ── Supply, reference, ground ────────────────────────────────────────────────
+VIN_SRC   vin  0  DC {vin_dc}
+VREF_SRC  vref 0  DC {vref_dc}
+VVSS      vss  0  DC 0
+
+* ── Default DC load ──────────────────────────────────────────────────────────
+R_load  vout vss {r_load}
+
+* ── Programmable load current (for load-reg sweep) ──────────────────────────
+* DC=0 at nominal; swept in .control below
+I_load  vout vss DC 0
+
+* ── DUT ─────────────────────────────────────────────────────────────────────
+{dut_include}
+X1 vin vout vss vref ldo_18_3
+
+.include {model_path}
+.options RELTOL=1e-4 ABSTOL=1e-12 VNTOL=1e-7 ITL4=50
+
+* ── Control block ────────────────────────────────────────────────────────────
+.control
+
+* --- Operating point at nominal conditions ---
+op
+echo "=== DC Operating Point ==="
+print v(vout) v(vin) v(vref)
+echo "Vout (V):" v(vout)
+echo "Vin  (V):" v(vin)
+
+* --- Line regulation: sweep VIN ---
+dc VIN_SRC {vin_min} {vin_max} {vin_step}
+wrdata {out_line_vin}   v(vin)
+wrdata {out_line_vout}  v(vout)
+
+* --- Load regulation: sweep I_load at nominal VIN ---
+* Reset VIN to nominal (dc above may leave it at vin_max)
+alter VIN_SRC dc={vin_dc}
+dc I_load 0 {iload_max} {iload_step}
+wrdata {out_load_iload}  I(I_load)
+wrdata {out_load_vout}   v(vout)
+
+.endc
+
+.end
