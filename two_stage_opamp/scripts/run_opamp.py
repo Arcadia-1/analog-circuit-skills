@@ -46,8 +46,11 @@ def main():
         f"Dominant pole : {m_pz.get('dominant_pole_hz', float('nan'))/1e3:.3f} kHz\n"
         f"Non-dom pole  : {nondom_hz/1e6:.3f} MHz ({nondom_ratio:.2f} x UGB)\n"
         f"First RHP zero: {rhp_zero_hz/1e6:.3f} MHz ({rhp_zero_ratio:.2f} x UGB)\n"
-        f"Vn @ 1 kHz    : {m_n.get('vn_1k_nvrtHz', float('nan')):.2f} nV/rtHz\n"
-        f"Vn rms        : {m_n.get('vn_rms_uv', float('nan')):.2f} uV_rms\n"
+        f"Open-loop output Vn @ 1 kHz : {m_n.get('vn_1k_nvrtHz', float('nan')):.2f} nV/rtHz\n"
+        f"Open-loop output Vn rms     : {m_n.get('vn_rms_uv', float('nan')):.2f} uV_rms\n"
+        f"Input-referred en @ 1 kHz   : {m_n.get('en_1k_nvrtHz', float('nan')):.2f} nV/rtHz\n"
+        f"Unity CL output Vn @ 1 kHz  : {m_n.get('cl_vn_1k_nvrtHz', float('nan')):.2f} nV/rtHz\n"
+        f"Unity CL output Vn rms      : {m_n.get('cl_vn_rms_uv', float('nan')):.2f} uV_rms\n"
     )
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     path = LOG_DIR / "opamp_report.txt"

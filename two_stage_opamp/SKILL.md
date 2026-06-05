@@ -34,7 +34,7 @@ This runs:
 - DC operating point and basic bias currents.
 - AC open-loop gain and phase versus frequency.
 - Pole-zero extraction for dominant pole, non-dominant pole, and zeros.
-- Output-referred noise density and integrated RMS noise.
+- Open-loop output-referred noise, input-referred noise, and unity-gain closed-loop output noise.
 
 Outputs go to `WORK/plots`, `WORK/logs`, and `WORK/netlists`.
 
