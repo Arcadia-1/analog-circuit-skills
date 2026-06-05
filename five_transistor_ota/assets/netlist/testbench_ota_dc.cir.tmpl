@@ -1,0 +1,25 @@
+* Five-Transistor OTA — DC Transfer Testbench
+
+VDD_SRC   vdd   0 DC {vdd}
+VSS_SRC   vss   0 DC 0
+VBIAS_SRC vbias 0 DC {vbias}
+VINP_SRC  inp   0 DC {vcm}
+VINN_SRC  inn   0 DC {vcm}
+
+{dut_include}
+XOTA inp inn out vdd vss vbias five_transistor_ota
+
+RLOAD out vss {r_load}
+CLOAD out vss {c_load}
+
+.include {model_path}
+.options RELTOL=1e-4 ABSTOL=1e-12 VNTOL=1e-7 ITL4=80
+
+.control
+dc VINP_SRC {vstart} {vstop} {vstep}
+wrdata {out_vinp} v(inp)
+wrdata {out_vout} v(out)
+.endc
+
+.end
+

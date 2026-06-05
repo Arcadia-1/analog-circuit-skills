@@ -7,6 +7,7 @@ comparator/assets/__pycache__/
 comparator/assets/plots/
 
 # Generated outputs
+WORK/
 .work_bootstrap/
 .work_comparator/
 __pycache__/

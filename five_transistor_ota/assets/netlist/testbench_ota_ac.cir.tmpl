@@ -1,0 +1,30 @@
+* Five-Transistor OTA — AC Open-Loop Testbench
+*
+* Differential AC stimulus:
+*   INP = VCM + +0.5 Vac
+*   INN = VCM + -0.5 Vac
+* Therefore v(out) is directly V/V differential gain.
+
+VDD_SRC   vdd   0 DC {vdd}
+VSS_SRC   vss   0 DC 0
+VBIAS_SRC vbias 0 DC {vbias}
+VINP_SRC  inp   0 DC {vcm} AC 0.5
+VINN_SRC  inn   0 DC {vcm} AC 0.5 180
+
+{dut_include}
+XOTA inp inn out vdd vss vbias five_transistor_ota
+
+RLOAD out vss {r_load}
+CLOAD out vss {c_load}
+
+.include {model_path}
+.options RELTOL=1e-4 ABSTOL=1e-12 VNTOL=1e-7 ITL4=80
+
+.control
+ac dec {ac_pts} {fstart} {fstop}
+wrdata {out_freq} frequency
+wrdata {out_gain_db} vdb(out)
+wrdata {out_phase} vp(out)
+.endc
+
+.end

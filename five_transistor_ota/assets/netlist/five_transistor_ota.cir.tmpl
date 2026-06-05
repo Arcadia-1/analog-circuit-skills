@@ -1,0 +1,31 @@
+* Five-Transistor OTA DUT
+* PTM 180nm CMOS
+*
+* Ports:
+*   INP   non-inverting input
+*   INN   inverting input
+*   OUT   single-ended output
+*   VDD   positive supply
+*   VSS   ground
+*   VBIAS tail NMOS gate bias
+
+.subckt five_transistor_ota INP INN OUT VDD VSS VBIAS
+
+* NMOS differential pair
+M0 OUT  INP TAIL VSS NMOS L={l_in} W={w_in} m={m_in}
++ ad={ad_in} as={as_in} pd={pd_in} ps={ps_in} nrd={nrd_in} nrs={nrs_in}
+M1 NETD INN TAIL VSS NMOS L={l_in} W={w_in} m={m_in}
++ ad={ad_in} as={as_in} pd={pd_in} ps={ps_in} nrd={nrd_in} nrs={nrs_in}
+
+* PMOS current-mirror active load
+M3 OUT  NETD VDD VDD PMOS L={l_load} W={w_load} m={m_load}
++ ad={ad_load} as={as_load} pd={pd_load} ps={ps_load} nrd={nrd_load} nrs={nrs_load}
+M4 NETD NETD VDD VDD PMOS L={l_load} W={w_load} m={m_load}
++ ad={ad_load} as={as_load} pd={pd_load} ps={ps_load} nrd={nrd_load} nrs={nrs_load}
+
+* NMOS tail current source
+M5 TAIL VBIAS VSS VSS NMOS L={l_tail} W={w_tail} m={m_tail}
++ ad={ad_tail} as={as_tail} pd={pd_tail} ps={ps_tail} nrd={nrd_tail} nrs={nrs_tail}
+
+.ends five_transistor_ota
+

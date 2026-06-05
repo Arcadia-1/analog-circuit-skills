@@ -1,0 +1,25 @@
+* Two-Stage Op Amp — Pole-Zero Analysis
+*
+* ngspice pz analysis is run with a single-ended small-signal source.
+* The pole locations are used together with the differential AC sweep.
+
+VDD_SRC vdd 0 DC {vdd}
+VINP_SRC inp 0 DC {vcm} AC 1
+VINN_SRC inn 0 DC {vcm} AC 0
+
+{dut_include}
+XOP inp inn out vdd 0 two_stage_opamp
+
+CLOAD out 0 {cl}
+RLEAK out 0 {r_leak}
+
+.include {model_path}
+.options RELTOL=1e-4 ABSTOL=1e-12 VNTOL=1e-7 ITL4=80
+
+.control
+pz inp 0 out 0 vol pz
+display
+print all
+.endc
+
+.end

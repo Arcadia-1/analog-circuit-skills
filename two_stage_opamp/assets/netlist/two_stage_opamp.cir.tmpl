@@ -1,0 +1,41 @@
+* Two-Stage CMOS Op Amp DUT
+* PTM 180nm CMOS
+*
+* Ports:
+*   INP   non-inverting input
+*   INN   inverting input
+*   OUT   output
+*   VDD   positive supply
+*   VSS   ground
+
+.subckt two_stage_opamp INP INN OUT VDD VSS
+
+* PMOS bias mirror. M7 is diode-connected and IBIAS sinks current from PBIAS.
+IBIAS_SRC PBIAS VSS DC {ibias}
+M7 PBIAS PBIAS VDD VDD PMOS L={l_m5_m7} W={w_m5_m7} m={m_m5_m7}
++ ad={ad_m5_m7} as={as_m5_m7} pd={pd_m5_m7} ps={ps_m5_m7} nrd={nrd_m5_m7} nrs={nrs_m5_m7}
+
+* First-stage PMOS current source and PMOS differential pair
+M5 C PBIAS VDD VDD PMOS L={l_m5_m7} W={w_m5_m7} m={m_m5_m7}
++ ad={ad_m5_m7} as={as_m5_m7} pd={pd_m5_m7} ps={ps_m5_m7} nrd={nrd_m5_m7} nrs={nrs_m5_m7}
+M0 A INN C VDD PMOS L={l_m0_m1} W={w_m0_m1} m={m_m0_m1}
++ ad={ad_m0_m1} as={as_m0_m1} pd={pd_m0_m1} ps={ps_m0_m1} nrd={nrd_m0_m1} nrs={nrs_m0_m1}
+M1 B INP C VDD PMOS L={l_m0_m1} W={w_m0_m1} m={m_m0_m1}
++ ad={ad_m0_m1} as={as_m0_m1} pd={pd_m0_m1} ps={ps_m0_m1} nrd={nrd_m0_m1} nrs={nrs_m0_m1}
+
+* NMOS current-mirror load
+M3 A A VSS VSS NMOS L={l_m3_m4} W={w_m3_m4} m={m_m3_m4}
++ ad={ad_m3_m4} as={as_m3_m4} pd={pd_m3_m4} ps={ps_m3_m4} nrd={nrd_m3_m4} nrs={nrs_m3_m4}
+M4 B A VSS VSS NMOS L={l_m3_m4} W={w_m3_m4} m={m_m3_m4}
++ ad={ad_m3_m4} as={as_m3_m4} pd={pd_m3_m4} ps={ps_m3_m4} nrd={nrd_m3_m4} nrs={nrs_m3_m4}
+
+* Second gain stage: NMOS common source with PMOS current-source load
+M6 OUT PBIAS VDD VDD PMOS L={l_m6} W={w_m6} m={m_m6}
++ ad={ad_m6} as={as_m6} pd={pd_m6} ps={ps_m6} nrd={nrd_m6} nrs={nrs_m6}
+M2 OUT B VSS VSS NMOS L={l_m2} W={w_m2} m={m_m2}
++ ad={ad_m2} as={as_m2} pd={pd_m2} ps={ps_m2} nrd={nrd_m2} nrs={nrs_m2}
+
+* Miller compensation
+CCOMP B OUT {cc}
+
+.ends two_stage_opamp

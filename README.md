@@ -14,6 +14,8 @@
 |------|---------|-----|------|
 | [comparator](comparator/) | 45nm PTM HP | 1.0 V | StrongArm 动态比较器 |
 | [bootstrap_switch](bootstrap_switch/) | 180 / 45 / 22nm PTM | 1.8 / 1.0 / 0.8 V | 自举采样开关 |
+| [five_transistor_ota](five_transistor_ota/) | 180nm PTM | 1.8 V | 五管 CMOS OTA |
+| [two_stage_opamp](two_stage_opamp/) | 180nm PTM | 1.8 V | Miller 补偿两级运放 |
 | LDO | — | — | 低压差线性稳压器 *(开发中)* |
 
 ## 自举开关
@@ -37,6 +39,16 @@
 
 ![StrongArm 比较器波形](strongarm_waveform.png)
 
+## 五管 OTA
+
+经典单端五管 CMOS OTA：NMOS 差分输入对、PMOS 电流镜有源负载、NMOS 尾电流源。
+内置 DC 转移曲线、AC 开环增益/带宽、输出噪声谱密度与积分噪声仿真。
+
+## 两级运放
+
+PMOS 输入对、NMOS 电流镜负载、NMOS 第二级共源放大、PMOS 电流源负载，并加入 Miller 补偿电容 Cc 与负载电容 CL。
+内置直流工作点、增益/相位频率扫描、PZ 极零点分析，以及输出噪声谱密度与积分噪声仿真。
+
 ## 运行方式
 
 ```bash
@@ -47,9 +59,15 @@ python run_tran_bts.py
 # StrongArm 比较器
 cd comparator/assets
 python run_tran_strongarm_comp.py
+
+# 五管 OTA（DC/AC/noise）
+python five_transistor_ota/scripts/run_ota.py
+
+# 两级运放（DC operating point / AC gain-phase / PZ / noise）
+python two_stage_opamp/scripts/run_opamp.py
 ```
 
-所有输出（日志、图像）保存到技能专用目录：`.work_bootstrap/` 或 `.work_comparator/`。
+所有输出（日志、图像）保存到技能专用目录：`.work_bootstrap/`、`.work_comparator/` 或 `WORK/`。
 
 ## 环境依赖
 
@@ -67,8 +85,17 @@ analog-circuit-skills/
 ├── bootstrap_switch/        # 自举采样开关技能
 │   ├── SKILL.md            # 详细文档
 │   └── assets/             # 网表模板 + Python 脚本
+├── five_transistor_ota/     # 五管 CMOS OTA 技能
+│   ├── SKILL.md            # 详细文档
+│   ├── assets/             # PTM 模型 + 网表模板
+│   └── scripts/            # DC / AC / noise 仿真脚本
+├── two_stage_opamp/         # Miller 补偿两级运放技能
+│   ├── SKILL.md            # 详细文档
+│   ├── assets/             # PTM 模型 + 网表模板
+│   └── scripts/            # DC / AC / noise 仿真脚本
 ├── .work_comparator/       # 比较器临时输出目录
 ├── .work_bootstrap/        # 自举开关临时输出目录
+├── WORK/                   # LDO / OTA 临时输出目录
 └── README.md               # 本文件
 ```
 
